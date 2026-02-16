@@ -5,7 +5,7 @@ let allowedLanguages = ['en']
 
 export type FeedInput = InferOutput<typeof FeedInput>
 export const FeedInput = object({
-    name: pipe(string('Name is required'), trim(), minLength(1, 'Name is required')),
+    name: pipe(string(), trim()),
     rssUrl: pipe(string('RSS URL is required'), trim(), minLength(1, 'RSS URL is required'), url('RSS URL must be a valid URL')),
     voice: pipe(
         string('Voice is required'),

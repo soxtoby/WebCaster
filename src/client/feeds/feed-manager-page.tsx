@@ -24,6 +24,7 @@ let languageOptions = ['en']
 export function FeedManagerPage() {
     let [feeds, setFeeds] = useState<Feed[]>([])
     let [selectedFeedId, setSelectedFeedId] = useState<number | null>(null)
+    let [isCreating, setIsCreating] = useState(false)
     let [draft, setDraft] = useState<FeedDraft>({ name: '', rssUrl: '', voice: 'default', language: 'en' })
     let [isLoading, setIsLoading] = useState(true)
     let [isSaving, setIsSaving] = useState(false)
@@ -70,6 +71,7 @@ export function FeedManagerPage() {
                         className={classes([feedCardStyle, selectedFeedId == feed.id && feedCardSelectedStyle])}
                         onClick={() => {
                             setSelectedFeedId(feed.id)
+                            setIsCreating(false)
                             setStatus('')
                             setError('')
                         }}
@@ -79,9 +81,23 @@ export function FeedManagerPage() {
                         <p className={classes(feedMetaStyle)}>{feed.rssUrl}</p>
                     </button>)}
                 </div>
+                {!isLoading ? <div className={classes(listActionRowStyle)}>
+                    <button
+                        className={classes([buttonStyle, primaryButtonStyle])}
+                        onClick={() => {
+                            setSelectedFeedId(null)
+                            setIsCreating(true)
+                            setStatus('')
+                            setError('')
+                        }}
+                        type="button"
+                    >
+                        Add feed
+                    </button>
+                </div> : null}
             </section>
 
-            <section className={classes([panelStyle])}>
+            {selectedFeed || isCreating ? <section className={classes([panelStyle])}>
                 <h2 className={classes(panelHeadingStyle)}>{selectedFeed ? 'Feed details' : 'Add feed'}</h2>
                 <form
                     className={classes(formStyle)}
@@ -119,18 +135,20 @@ export function FeedManagerPage() {
                         <button className={classes([buttonStyle, primaryButtonStyle])} disabled={isSaving} type="submit">
                             {isSaving ? 'Saving...' : selectedFeed ? 'Save changes' : 'Add feed'}
                         </button>
-                        <button
+                        {!selectedFeed ? <button
                             className={classes(buttonStyle)}
                             disabled={isSaving || isDeleting}
                             onClick={() => {
                                 setSelectedFeedId(null)
-                                setStatus('Creating new feed')
+                                setIsCreating(false)
+                                setDraft({ name: '', rssUrl: '', voice: 'default', language: 'en' })
+                                setStatus('')
                                 setError('')
                             }}
                             type="button"
                         >
-                            New feed
-                        </button>
+                            Cancel
+                        </button> : null}
                         {selectedFeed ? <button
                             className={classes([buttonStyle, dangerButtonStyle])}
                             disabled={isSaving || isDeleting}
@@ -146,7 +164,7 @@ export function FeedManagerPage() {
 
                 {status ? <p className={classes(statusStyle)}>{status}</p> : null}
                 {error ? <p className={classes(errorStyle)}>{error}</p> : null}
-            </section>
+            </section> : null}
         </div>
     </div>
 
@@ -165,10 +183,13 @@ export function FeedManagerPage() {
                 let firstFeed = json.feeds.at(0)
                 if (firstFeed)
                     setSelectedFeedId(current => current ?? firstFeed.id)
+                setIsCreating(false)
             }
 
-            if (json.feeds.length == 0)
+            if (json.feeds.length == 0) {
                 setSelectedFeedId(null)
+                setIsCreating(false)
+            }
         }
         catch {
             setError('Could not load feeds')
@@ -182,8 +203,8 @@ export function FeedManagerPage() {
         setError('')
         setStatus('')
 
-        if (!draft.name.trim() || !draft.rssUrl.trim()) {
-            setError('Name and RSS URL are required')
+        if (!draft.rssUrl.trim()) {
+            setError('RSS URL is required')
             return
         }
 
@@ -215,6 +236,7 @@ export function FeedManagerPage() {
             else {
                 setFeeds(current => [json.feed, ...current])
                 setSelectedFeedId(json.feed.id)
+                setIsCreating(false)
                 setStatus('Feed added')
             }
         }
@@ -247,8 +269,10 @@ export function FeedManagerPage() {
                     if (firstFeed)
                         setSelectedFeedId(firstFeed.id)
                 }
-                else
+                else {
                     setSelectedFeedId(null)
+                    setIsCreating(false)
+                }
 
                 return next
             })
@@ -397,6 +421,10 @@ let panelHeadingStyle = style('panelHeading', {
 let listStyle = style('feedList', {
     display: 'grid',
     gap: 8
+})
+
+let listActionRowStyle = style('listActionRow', {
+    marginTop: 12
 })
 
 let feedCardStyle = style('feedCard', {
