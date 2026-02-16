@@ -1,12 +1,21 @@
-import { serve } from "bun";
-import index from "../client/index.html";
-import { setupNotificationIcon } from "./notification-icon";
+import { serve } from "bun"
+import index from "../client/index.html"
+import { createFeed, deleteFeed, listFeeds, updateFeed } from "./feeds/handlers"
+import { setupNotificationIcon } from "./notification-icon"
 
 let server = serve({
     development: true,
     port: 3000,
     routes: {
-        '/': index
+        '/': index,
+        '/api/feeds': {
+            GET: listFeeds,
+            POST: createFeed
+        },
+        '/api/feeds/:id': {
+            PUT: updateFeed,
+            DELETE: deleteFeed
+        }
     }
 })
 
