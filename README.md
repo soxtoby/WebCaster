@@ -12,6 +12,12 @@ To run:
 bun run start
 ```
 
+To manage database migrations:
+
+```bash
+bun run db:generate
+```
+
 This project was created using `bun init` in bun v1.3.8. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
 
 ## Feed management UI

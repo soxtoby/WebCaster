@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1771236709864,
+      "tag": "0000_wakeful_captain_cross",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1771236852726,
+      "tag": "0001_clear_golden_guardian",
+      "breakpoints": true
+    }
+  ]
+}

@@ -1,33 +1,8 @@
 import { Result } from "better-result"
 import type { BunRequest } from "bun"
-import { check, minLength, object, pipe, safeParse, string, trim, url } from "valibot"
+import { safeParse } from "valibot"
+import { FeedInput } from "./FeedInput"
 import { createFeed as createFeedRecord, deleteFeedById, listFeeds as listFeedRecords, updateFeedById } from "./repository"
-
-type FeedInput = {
-    name: string
-    rssUrl: string
-    voice: string
-    language: string
-}
-
-let allowedVoices = ['default']
-let allowedLanguages = ['en']
-let feedSchema = object({
-    name: pipe(string('Name is required'), trim(), minLength(1, 'Name is required')),
-    rssUrl: pipe(string('RSS URL is required'), trim(), minLength(1, 'RSS URL is required'), url('RSS URL must be a valid URL')),
-    voice: pipe(
-        string('Voice is required'),
-        trim(),
-        minLength(1, 'Voice is required'),
-        check((value) => allowedVoices.includes(value), `Voice must be one of: ${allowedVoices.join(', ')}`)
-    ),
-    language: pipe(
-        string('Language is required'),
-        trim(),
-        minLength(1, 'Language is required'),
-        check((value) => allowedLanguages.includes(value), `Language must be one of: ${allowedLanguages.join(', ')}`)
-    )
-})
 
 export async function listFeeds() {
     return Response.json({ feeds: listFeedRecords() }, { status: 200 })
@@ -87,8 +62,8 @@ async function parseAndValidateFeed(request: BunRequest): Promise<Result<FeedInp
     }
 
     if (typeof body == 'object' && body != null) {
-        let parsed = safeParse(feedSchema, body)
-        
+        let parsed = safeParse(FeedInput, body)
+
         if (!parsed.success) {
             let issue = parsed.issues[0]
             return issue
