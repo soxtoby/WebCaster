@@ -1,5 +1,6 @@
 import { Icon, Menu, NotifyIcon } from "not-the-systray"
 import open from "open"
+import image from "./icon.ico" with { type: "file" }
 
 export async function setupNotificationIcon(serverUrl: string) {
     if (process.platform == 'win32') {
@@ -18,7 +19,7 @@ export async function setupNotificationIcon(serverUrl: string) {
         ])
 
         let icon = new NotifyIcon({
-            icon: Icon.loadBuiltin(Icon.ids.app, Icon.small),
+            icon: Icon.load(image, Icon.small),
             tooltip: "WebCaster",
             async onSelect(event) {
                 if (event.rightButton) {

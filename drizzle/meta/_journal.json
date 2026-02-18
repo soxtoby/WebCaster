@@ -15,6 +15,20 @@
       "when": 1771236852726,
       "tag": "0001_clear_golden_guardian",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1771406068742,
+      "tag": "0002_good_nova",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1771406935070,
+      "tag": "0003_broken_stepford_cuckoos",
+      "breakpoints": true
     }
   ]
 }

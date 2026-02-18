@@ -17,7 +17,8 @@ export async function createFeed(request: BunRequest<'/api/feeds'>) {
     if (Result.isError(input))
         return Response.json({ error: input.error }, { status: 400 })
 
-    let feed = createFeedRecord(input.value)
+    let enriched = await withFeedMetadata(input.value)
+    let feed = createFeedRecord(enriched)
     return Response.json({ feed }, { status: 201 })
 }
 
@@ -34,7 +35,8 @@ export async function updateFeed(request: BunRequest<'/api/feeds/:id'>) {
     if (Result.isError(input))
         return Response.json({ error: input.error }, { status: 400 })
 
-    let updated = updateFeedById(id.value, input.value)
+    let enriched = await withFeedMetadata(input.value)
+    let updated = updateFeedById(id.value, enriched)
     if (updated)
         return Response.json({ feed: updated }, { status: 200 })
 
@@ -107,6 +109,45 @@ async function withResolvedFeedName(input: FeedInput): Promise<Result<FeedInput,
     })
 }
 
+async function withFeedMetadata(input: FeedInput) {
+    let metadata = await fetchFeedMetadata(input.rssUrl)
+    if (Result.isError(metadata))
+        return input
+
+    return {
+        ...input,
+        description: metadata.value.description,
+        imageUrl: metadata.value.imageUrl
+    }
+}
+
+type FeedMetadata = {
+    description: string | null
+    imageUrl: string | null
+}
+
+async function fetchFeedMetadata(rssUrl: string): Promise<Result<FeedMetadata, string>> {
+    try {
+        let response = await fetch(rssUrl, {
+            headers: {
+                Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.5'
+            }
+        })
+
+        if (!response.ok)
+            return Result.err('Could not fetch feed metadata')
+
+        let xml = await response.text()
+        let imageUrl = extractFeedImage(xml)
+        let description = extractFeedDescription(xml)
+
+        return Result.ok({ imageUrl, description })
+    }
+    catch {
+        return Result.err('Could not fetch feed metadata')
+    }
+}
+
 async function fetchFeedTitle(rssUrl: string): Promise<Result<string, string>> {
     try {
         let response = await fetch(rssUrl, {
@@ -172,6 +213,93 @@ function decodeXmlEntities(value: string) {
         .replace(/&gt;/g, '>')
         .replace(/&quot;/g, '"')
         .replace(/&#39;|&apos;/g, "'")
+}
+
+function extractFeedDescription(xml: string): string | null {
+    let channelDescMatch = xml.match(/<channel[\s\S]*?<description(?:\s[^>]*)?>([\s\S]*?)<\/description>/i)
+    if (channelDescMatch?.[1]) {
+        let desc = cleanDescription(channelDescMatch[1])
+        if (desc)
+            return desc
+    }
+
+    let atomSubtitleMatch = xml.match(/<feed[\s\S]*?<subtitle(?:\s[^>]*)?>([\s\S]*?)<\/subtitle>/i)
+    if (atomSubtitleMatch?.[1]) {
+        let desc = cleanDescription(atomSubtitleMatch[1])
+        if (desc)
+            return desc
+    }
+
+    let itunesSummaryMatch = xml.match(/<itunes:summary(?:\s[^>]*)?>([\s\S]*?)<\/itunes:summary>/i)
+    if (itunesSummaryMatch?.[1]) {
+        let desc = cleanDescription(itunesSummaryMatch[1])
+        if (desc)
+            return desc
+    }
+
+    return null
+}
+
+function cleanDescription(rawDesc: string): string | null {
+    let withoutCdata = rawDesc.replace(/^<!\[CDATA\[|\]\]>$/g, '')
+    let withoutTags = withoutCdata.replace(/<[^>]+>/g, '')
+    let collapsedWhitespace = withoutTags.replace(/\s+/g, ' ').trim()
+    if (!collapsedWhitespace)
+        return null
+
+    let decoded = decodeXmlEntities(collapsedWhitespace)
+    if (decoded.length > 200)
+        return decoded.substring(0, 197) + '...'
+
+    return decoded
+}
+
+function extractFeedImage(xml: string): string | null {
+    let itunesImageMatch = xml.match(/<itunes:image[^>]+href=["']([^"']+)["']/i)
+    if (itunesImageMatch?.[1])
+        return itunesImageMatch[1]
+
+    let channelImageUrlMatch = xml.match(/<channel[\s\S]*?<image[\s\S]*?<url(?:\s[^>]*)?>([\s\S]*?)<\/url>/i)
+    if (channelImageUrlMatch?.[1]) {
+        let url = cleanImageUrl(channelImageUrlMatch[1])
+        if (url)
+            return url
+    }
+
+    let atomLogoMatch = xml.match(/<feed[\s\S]*?<logo(?:\s[^>]*)?>([\s\S]*?)<\/logo>/i)
+    if (atomLogoMatch?.[1]) {
+        let url = cleanImageUrl(atomLogoMatch[1])
+        if (url)
+            return url
+    }
+
+    let atomIconMatch = xml.match(/<feed[\s\S]*?<icon(?:\s[^>]*)?>([\s\S]*?)<\/icon>/i)
+    if (atomIconMatch?.[1]) {
+        let url = cleanImageUrl(atomIconMatch[1])
+        if (url)
+            return url
+    }
+
+    let mediaThumbnailMatch = xml.match(/<media:thumbnail[^>]+url=["']([^"']+)["']/i)
+    if (mediaThumbnailMatch?.[1])
+        return mediaThumbnailMatch[1]
+
+    return null
+}
+
+function cleanImageUrl(rawUrl: string): string | null {
+    let withoutCdata = rawUrl.replace(/^<!\[CDATA\[|\]\]>$/g, '')
+    let withoutTags = withoutCdata.replace(/<[^>]+>/g, '')
+    let trimmed = withoutTags.trim()
+    if (!trimmed)
+        return null
+
+    try {
+        new URL(trimmed)
+        return trimmed
+    } catch {
+        return null
+    }
 }
 
 function buildFallbackFeedName(rssUrl: string) {

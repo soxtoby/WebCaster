@@ -2,6 +2,7 @@ import { queryCollectionOptions } from "@tanstack/query-db-collection"
 import { createCollection } from "@tanstack/react-db"
 import { QueryClient } from "@tanstack/react-query"
 import type { Feed } from "../../server/db/schema"
+import type { FeedInput } from "../../server/feeds/FeedInput"
 
 export let queryClient = new QueryClient()
 
@@ -24,7 +25,12 @@ export const feedCollection = createCollection(queryCollectionOptions<Feed>({
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(feed)
+            body: JSON.stringify({
+                name: feed.name,
+                rssUrl: feed.rssUrl,
+                voice: feed.voice,
+                language: feed.language
+            } satisfies FeedInput)
         })
         if (!response.ok)
             throw new Error(await readError(response))
@@ -36,7 +42,12 @@ export const feedCollection = createCollection(queryCollectionOptions<Feed>({
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(modified)
+            body: JSON.stringify({
+                name: modified.name,
+                rssUrl: modified.rssUrl,
+                voice: modified.voice,
+                language: modified.language
+            } satisfies FeedInput)
         })
         if (!response.ok)
             throw new Error(await readError(response))
@@ -57,6 +68,6 @@ async function readError(response: Response) {
         if (json.error)
             return json.error
     } catch { }
-    
+
     return 'Request failed'
 }

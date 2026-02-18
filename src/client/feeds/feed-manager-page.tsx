@@ -77,8 +77,18 @@ export function FeedManagerPage() {
                         }}
                         type="button"
                     >
-                        <p className={classes(feedNameStyle)}>{feed.name}</p>
-                        <p className={classes(feedMetaStyle)}>{feed.rssUrl}</p>
+                        <div className={classes(feedCardContentStyle)}>
+                            {feed.imageUrl
+                                ? <img src={feed.imageUrl} alt="" className={classes(feedImageStyle)} />
+                                : <div className={classes(feedPlaceholderStyle)}>
+                                    {(feed.name || 'Untitled')[0]?.toUpperCase() || 'U'}
+                                </div>
+                            }
+                            <div className={classes(feedTextStyle)}>
+                                <p className={classes(feedNameStyle)}>{feed.name || 'Untitled Feed'}</p>
+                                <p className={classes(feedMetaStyle)}>{feed.description || feed.rssUrl}</p>
+                            </div>
+                        </div>
                     </button>)}
                 </div>
                 {!isLoading
@@ -99,28 +109,30 @@ export function FeedManagerPage() {
                     : null}
             </section>
 
-            {selectedFeed || isCreating ? <FeedDetailsSection
-                draft={draft}
-                error={error}
-                isEditing={selectedFeed != null}
-                languageOptions={languageOptions}
-                onCancel={() => {
-                    setSelectedFeedId(null)
-                    setIsCreating(false)
-                    setDraft({ name: '', rssUrl: '', voice: 'default', language: 'en' })
-                    setStatus('')
-                    setError('')
-                }}
-                onDelete={() => removeFeed()}
-                onDraftChange={(field, value) => {
-                    setDraft(current => ({ ...current, [field]: value }))
-                }}
-                onSubmit={() => {
-                    void saveFeed()
-                }}
-                status={status}
-                voiceOptions={voiceOptions}
-            /> : null}
+            {selectedFeed || isCreating
+                ? <FeedDetailsSection
+                    draft={draft}
+                    error={error}
+                    isEditing={selectedFeed != null}
+                    languageOptions={languageOptions}
+                    onCancel={() => {
+                        setSelectedFeedId(null)
+                        setIsCreating(false)
+                        setDraft({ name: "", rssUrl: "", voice: "default", language: "en" })
+                        setStatus("")
+                        setError("")
+                    }}
+                    onDelete={() => removeFeed()}
+                    onDraftChange={(field, value) => {
+                        setDraft(current => ({ ...current, [field]: value }))
+                    }}
+                    onSubmit={() => {
+                        void saveFeed()
+                    }}
+                    status={status}
+                    voiceOptions={voiceOptions}
+                />
+                : null}
         </div>
     </div>
 
@@ -135,19 +147,21 @@ export function FeedManagerPage() {
 
         if (selectedFeed) {
             feedCollection.update(selectedFeed.id.toString(), f => {
-                f.name = draft.name.trim(),
-                    f.rssUrl = draft.rssUrl.trim(),
-                    f.voice = draft.voice,
-                    f.language = draft.language,
-                    f.updatedAt = new Date().toISOString()
+                f.name = draft.name.trim()
+                f.rssUrl = draft.rssUrl.trim()
+                f.voice = draft.voice
+                f.language = draft.language
+                f.updatedAt = new Date().toISOString()
             });
             setStatus('Feed updated')
         } else {
             let newFeed = {
                 id: -feedCollection.size,
+                ...draft,
+                description: null,
+                imageUrl: null,
                 createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-                ...draft
+                updatedAt: new Date().toISOString()
             }
             feedCollection.insert(newFeed)
             setSelectedFeedId(newFeed.id)
@@ -275,6 +289,39 @@ let feedCardStyle = style('feedCard', {
 let feedCardSelectedStyle = style('feedCardSelected', {
     borderColor: 'var(--accent)',
     backgroundColor: 'color-mix(in srgb, var(--accent) 13%, transparent)'
+})
+
+let feedCardContentStyle = style('feedCardContent', {
+    display: 'flex',
+    gap: 12,
+    alignItems: 'center'
+})
+
+let feedImageStyle = style('feedImage', {
+    width: 48,
+    height: 48,
+    objectFit: 'cover',
+    borderRadius: 6,
+    flexShrink: 0
+})
+
+let feedPlaceholderStyle = style('feedPlaceholder', {
+    width: 48,
+    height: 48,
+    borderRadius: 6,
+    flexShrink: 0,
+    backgroundColor: 'var(--accent)',
+    color: 'var(--accent-text)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 20,
+    fontWeight: 600
+})
+
+let feedTextStyle = style('feedText', {
+    minWidth: 0,
+    flex: 1
 })
 
 let feedNameStyle = style('feedName', {

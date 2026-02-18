@@ -21,12 +21,14 @@ export function getFeedById(id: number) {
     return row || null
 }
 
-export function createFeed(input: FeedInput) {
+export function createFeed(input: FeedInput & { description?: string | null; imageUrl?: string | null }) {
     let created = database
         .insert(feedsTable)
         .values({
             name: input.name,
             rssUrl: input.rssUrl,
+            description: input.description ?? null,
+            imageUrl: input.imageUrl ?? null,
             voice: input.voice,
             language: input.language
         })
@@ -39,12 +41,14 @@ export function createFeed(input: FeedInput) {
     return created
 }
 
-export function updateFeedById(id: number, input: FeedInput) {
+export function updateFeedById(id: number, input: FeedInput & { description?: string | null; imageUrl?: string | null }) {
     let updated = database
         .update(feedsTable)
         .set({
             name: input.name,
             rssUrl: input.rssUrl,
+            description: input.description ?? null,
+            imageUrl: input.imageUrl ?? null,
             voice: input.voice,
             language: input.language,
             updatedAt: sql`CURRENT_TIMESTAMP`

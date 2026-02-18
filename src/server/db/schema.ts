@@ -6,6 +6,8 @@ export const feedsTable = sqliteTable('feeds', {
     id: integer('id').primaryKey({ autoIncrement: true }),
     name: text('name').notNull(),
     rssUrl: text('rss_url').notNull(),
+    description: text('description'),
+    imageUrl: text('image_url'),
     voice: text('voice').notNull(),
     language: text('language').notNull(),
     createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
