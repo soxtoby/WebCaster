@@ -1,6 +1,7 @@
-import { sql } from "drizzle-orm"
+import { sql, type InferSelectModel } from "drizzle-orm"
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core"
 
+export type Feed = InferSelectModel<typeof feedsTable>
 export const feedsTable = sqliteTable('feeds', {
     id: integer('id').primaryKey({ autoIncrement: true }),
     name: text('name').notNull(),
@@ -11,6 +12,7 @@ export const feedsTable = sqliteTable('feeds', {
     updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`)
 })
 
+export type Article = InferSelectModel<typeof articlesTable>
 export const articlesTable = sqliteTable('articles', {
     id: integer('id').primaryKey({ autoIncrement: true }),
     feedId: integer('feed_id').notNull().references(() => feedsTable.id, { onDelete: 'cascade' }),
