@@ -13,12 +13,11 @@ export async function createFeed(request: BunRequest<'/api/feeds'>) {
     if (Result.isError(parsed))
         return Response.json({ error: parsed.error }, { status: 400 })
 
-    let input = await withResolvedFeedName(parsed.value)
-    if (Result.isError(input))
-        return Response.json({ error: input.error }, { status: 400 })
+    let enriched = await withFeedMetadata(parsed.value)
+    if (Result.isError(enriched))
+        return Response.json({ error: enriched.error }, { status: 400 })
 
-    let enriched = await withFeedMetadata(input.value)
-    let feed = createFeedRecord(enriched)
+    let feed = createFeedRecord(enriched.value)
     return Response.json({ feed }, { status: 201 })
 }
 
@@ -31,12 +30,11 @@ export async function updateFeed(request: BunRequest<'/api/feeds/:id'>) {
     if (Result.isError(parsed))
         return Response.json({ error: parsed.error }, { status: 400 })
 
-    let input = await withResolvedFeedName(parsed.value)
-    if (Result.isError(input))
-        return Response.json({ error: input.error }, { status: 400 })
+    let enriched = await withFeedMetadata(parsed.value)
+    if (Result.isError(enriched))
+        return Response.json({ error: enriched.error }, { status: 400 })
 
-    let enriched = await withFeedMetadata(input.value)
-    let updated = updateFeedById(id.value, enriched)
+    let updated = updateFeedById(id.value, enriched.value)
     if (updated)
         return Response.json({ feed: updated }, { status: 200 })
 
@@ -87,41 +85,41 @@ async function parseAndValidateFeed(request: BunRequest): Promise<Result<FeedInp
     return Result.err('JSON object body is required')
 }
 
-async function withResolvedFeedName(input: FeedInput): Promise<Result<FeedInput, string>> {
-    if (input.name)
-        return Result.ok(input)
+async function withFeedMetadata(input: FeedInput): Promise<Result<FeedInput, string>> {
+    let metadata = await fetchFeedMetadata(input.rssUrl)
 
-    let title = await fetchFeedTitle(input.rssUrl)
-    if (Result.isError(title)) {
+    if (Result.isError(metadata)) {
+        if (!input.name) {
+            let fallbackName = buildFallbackFeedName(input.rssUrl)
+            if (!fallbackName)
+                return Result.err('Feed name is required and could not be inferred from source feed')
+
+            return Result.ok({
+                ...input,
+                name: fallbackName
+            })
+        }
+        return Result.ok(input)
+    }
+
+    let name = input.name || metadata.value.title
+    if (!name) {
         let fallbackName = buildFallbackFeedName(input.rssUrl)
         if (!fallbackName)
             return Result.err('Feed name is required and could not be inferred from source feed')
-
-        return Result.ok({
-            ...input,
-            name: fallbackName
-        })
+        name = fallbackName
     }
 
     return Result.ok({
         ...input,
-        name: title.value
+        name,
+        description: metadata.value.description,
+        imageUrl: metadata.value.imageUrl
     })
 }
 
-async function withFeedMetadata(input: FeedInput) {
-    let metadata = await fetchFeedMetadata(input.rssUrl)
-    if (Result.isError(metadata))
-        return input
-
-    return {
-        ...input,
-        description: metadata.value.description,
-        imageUrl: metadata.value.imageUrl
-    }
-}
-
 type FeedMetadata = {
+    title: string | null
     description: string | null
     imageUrl: string | null
 }
@@ -138,40 +136,18 @@ async function fetchFeedMetadata(rssUrl: string): Promise<Result<FeedMetadata, s
             return Result.err('Could not fetch feed metadata')
 
         let xml = await response.text()
+        let title = extractFeedTitle(xml)
         let imageUrl = extractFeedImage(xml)
         let description = extractFeedDescription(xml)
 
-        return Result.ok({ imageUrl, description })
+        return Result.ok({ title, imageUrl, description })
     }
     catch {
         return Result.err('Could not fetch feed metadata')
     }
 }
 
-async function fetchFeedTitle(rssUrl: string): Promise<Result<string, string>> {
-    try {
-        let response = await fetch(rssUrl, {
-            headers: {
-                Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.5'
-            }
-        })
-
-        if (!response.ok)
-            return Result.err('Feed name is required and could not be inferred from source feed')
-
-        let xml = await response.text()
-        let title = extractFeedTitle(xml)
-        if (!title)
-            return Result.err('Feed name is required and could not be inferred from source feed')
-
-        return Result.ok(title)
-    }
-    catch {
-        return Result.err('Feed name is required and could not be inferred from source feed')
-    }
-}
-
-function extractFeedTitle(xml: string) {
+function extractFeedTitle(xml: string): string | null {
     let channelTitleMatch = xml.match(/<channel[\s\S]*?<title(?:\s[^>]*)?>([\s\S]*?)<\/title>/i)
     if (channelTitleMatch?.[1]) {
         let title = cleanFeedTitle(channelTitleMatch[1])
@@ -193,7 +169,7 @@ function extractFeedTitle(xml: string) {
             return title
     }
 
-    return ''
+    return null
 }
 
 function cleanFeedTitle(rawTitle: string) {
