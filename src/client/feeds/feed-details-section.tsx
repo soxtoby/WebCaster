@@ -6,6 +6,18 @@ type FeedDraft = {
     rssUrl: string
     voice: string
     language: string
+    generationMode: string
+    contentSource: string
+}
+
+type Episode = {
+    id: number
+    title: string
+    sourceUrl: string
+    publishedAt: string | null
+    status: string
+    errorMessage: string | null
+    audioReady: boolean
 }
 
 export type VoiceOption = {
@@ -18,9 +30,11 @@ export type VoiceOption = {
 
 export function FeedDetailsSection(props: {
     draft: FeedDraft
+    episodes: Episode[]
     error: string
     isEditing: boolean
     languageOptions: string[]
+    podcastUrl: string
     onCancel: () => void
     onDelete: () => void
     onDraftChange: (field: keyof FeedDraft, value: string) => void
@@ -61,6 +75,25 @@ export function FeedDetailsSection(props: {
                 options={props.languageOptions}
                 onChange={value => props.onDraftChange('language', value)}
             />
+            <TextSelectField
+                label="Generation mode"
+                value={props.draft.generationMode}
+                options={['on_demand', 'every_episode']}
+                onChange={value => props.onDraftChange('generationMode', value)}
+            />
+            <TextSelectField
+                label="Content source"
+                value={props.draft.contentSource}
+                options={['feed_article', 'source_page']}
+                onChange={value => props.onDraftChange('contentSource', value)}
+            />
+
+            {props.podcastUrl
+                ? <label className={classes(fieldGroupStyle)}>
+                    <span className={classes(labelStyle)}>Podcast feed URL</span>
+                    <a className={classes(linkStyle)} href={props.podcastUrl} rel="noreferrer" target="_blank">{props.podcastUrl}</a>
+                </label>
+                : null}
 
             <div className={classes(buttonRowStyle)}>
                 <button className={classes([buttonStyle, primaryButtonStyle])} type="submit">
@@ -89,6 +122,19 @@ export function FeedDetailsSection(props: {
 
         {props.status ? <p className={classes(statusStyle)}>{props.status}</p> : null}
         {props.error ? <p className={classes(errorStyle)}>{props.error}</p> : null}
+
+        {props.isEditing
+            ? <div className={classes(episodesStyle)}>
+                <h3 className={classes(episodesHeadingStyle)}>Episodes</h3>
+                {props.episodes.length == 0
+                    ? <p className={classes(statusStyle)}>No episodes discovered yet.</p>
+                    : <div className={classes(episodeListStyle)}>{props.episodes.map(episode => <article className={classes(episodeCardStyle)} key={episode.id}>
+                        <p className={classes(episodeTitleStyle)}>{episode.title}</p>
+                        <p className={classes(episodeMetaStyle)}>{episode.status}{episode.audioReady ? ' · audio ready' : ''}</p>
+                        {episode.errorMessage ? <p className={classes(errorStyle)}>{episode.errorMessage}</p> : null}
+                    </article>)}</div>}
+            </div>
+            : null}
     </section>
 }
 
@@ -123,6 +169,7 @@ function VoiceSelectField(props: {
             onChange={(event: ChangeEvent<HTMLSelectElement>) => props.onChange(event.target.value)}
             value={props.value}
         >
+            {props.options.length == 0 ? <option value="">No voices available</option> : null}
             {props.options.map(option => <option key={option.id} value={option.id}>{buildVoiceLabel(option)}</option>)}
         </select>
     </label>
@@ -225,4 +272,47 @@ let statusStyle = style('detailsStatus', {
 let errorStyle = style('detailsError', {
     margin: [6, 0, 0, 0],
     color: 'var(--danger)'
+})
+
+let linkStyle = style('detailsLink', {
+    color: 'var(--accent)',
+    textDecoration: 'none',
+    fontSize: 14,
+    overflowWrap: 'anywhere'
+})
+
+let episodesStyle = style('detailsEpisodes', {
+    marginTop: 16,
+    display: 'grid',
+    gap: 8
+})
+
+let episodesHeadingStyle = style('detailsEpisodesHeading', {
+    margin: 0,
+    fontSize: 16
+})
+
+let episodeListStyle = style('detailsEpisodeList', {
+    display: 'grid',
+    gap: 8,
+    maxHeight: 260,
+    overflowY: 'auto'
+})
+
+let episodeCardStyle = style('detailsEpisodeCard', {
+    border: '1px solid var(--border)',
+    borderRadius: 8,
+    padding: 10,
+    backgroundColor: 'transparent'
+})
+
+let episodeTitleStyle = style('detailsEpisodeTitle', {
+    margin: [0, 0, 4, 0],
+    fontSize: 14
+})
+
+let episodeMetaStyle = style('detailsEpisodeMeta', {
+    margin: 0,
+    fontSize: 12,
+    color: 'var(--muted)'
 })

@@ -22,6 +22,7 @@ export function getFeedById(id: number) {
 }
 
 export function createFeed(input: FeedInput & { description?: string | null; imageUrl?: string | null }) {
+    let podcastSlug = createPodcastSlug()
     let created = database
         .insert(feedsTable)
         .values({
@@ -30,7 +31,10 @@ export function createFeed(input: FeedInput & { description?: string | null; ima
             description: input.description ?? null,
             imageUrl: input.imageUrl ?? null,
             voice: input.voice,
-            language: input.language
+            language: input.language,
+            generationMode: input.generationMode,
+            contentSource: input.contentSource,
+            podcastSlug
         })
         .returning()
         .get()
@@ -51,6 +55,8 @@ export function updateFeedById(id: number, input: FeedInput & { description?: st
             imageUrl: input.imageUrl ?? null,
             voice: input.voice,
             language: input.language,
+            generationMode: input.generationMode,
+            contentSource: input.contentSource,
             updatedAt: sql`CURRENT_TIMESTAMP`
         })
         .where(eq(feedsTable.id, id))
@@ -61,6 +67,10 @@ export function updateFeedById(id: number, input: FeedInput & { description?: st
         return null
 
     return updated
+}
+
+function createPodcastSlug() {
+    return `feed-${Math.random().toString(36).slice(2, 12)}`
 }
 
 export function deleteFeedById(id: number) {

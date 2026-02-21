@@ -42,6 +42,6 @@ export const VoiceIdInput = object({
     voice: pipe(
         string('Voice is required'),
         trim(),
-        check(value => value == 'default' || /^(inworld|openai|elevenlabs|lemonfox):.+$/.test(value), 'Voice must be provider-scoped')
+        check(value => value.length > 0, 'Voice is required')
     )
 })

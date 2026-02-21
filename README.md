@@ -26,6 +26,7 @@ The app includes a single-page RSS feed manager with feed list and feed details 
 
 - TTS provider settings open in a modal dialog over the main page.
 - Supported providers: Inworld, OpenAI, ElevenLabs.
+- Supported providers: Inworld, OpenAI, ElevenLabs, Lemonfox.
 - Voice selector merges voices from configured providers and shows voice name, description, gender, and source.
 - If a provider does not return gender, gender is inferred from voice name with `unknown` fallback.
 
@@ -34,14 +35,19 @@ Feed fields:
 - RSS URL
 - Voice (provider-scoped voice id)
 - Language (`en`)
+- Generation mode (`on_demand` or `every_episode`)
+- Content source (`feed_article` or `source_page`)
+
+Feed details also shows:
+- Generated podcast feed URL
+- Feed episodes and generation status (`pending`, `generating`, `ready`, `failed`)
 
 The UI follows the system color preference using `prefers-color-scheme`.
 
 ## API
 
-- `GET /api/feeds`
-- `POST /api/feeds`
-- `PUT /api/feeds/:id`
-- `DELETE /api/feeds/:id`
+- tRPC endpoint: `POST /api/*`
+- Podcast feed endpoint: `GET /podcast/:slug.xml`
+- Episode audio endpoint: `GET /audio/:slug/:episodeId.mp3`
 
 Feed data is stored locally in SQLite at `data/webcaster.sqlite`.

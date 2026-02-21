@@ -1,8 +1,9 @@
 import { TRPCError } from "@trpc/server"
 import { Result } from "better-result"
 import { procedure } from "../trpc/trpc"
+import { listFeedEpisodes } from "./feed-podcast"
 import { FeedIdInput, FeedInput, FeedUpdateInput } from "./feed-types"
-import { createFeed as createFeedRecord, deleteFeedById as deleteFeedRecordById, listFeeds as listFeedRecords, updateFeedById as updateFeedRecordById } from "./feed-repository"
+import { createFeed as createFeedRecord, deleteFeedById as deleteFeedRecordById, getFeedById as getFeedRecordById, listFeeds as listFeedRecords, updateFeedById as updateFeedRecordById } from "./feed-repository"
 
 export const list = procedure
     .query(() => ({ feeds: listFeedRecords() }));
@@ -40,6 +41,19 @@ export const deleteFeed = procedure
             return { success: true }
 
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Feed not found' })
+    })
+
+export const episodes = procedure
+    .input(FeedIdInput)
+    .query(({ input }) => {
+        let feed = getFeedRecordById(input.id)
+        if (!feed)
+            throw new TRPCError({ code: 'NOT_FOUND', message: 'Feed not found' })
+
+        return {
+            podcastUrl: `/podcast/${feed.podcastSlug}.xml`,
+            episodes: listFeedEpisodes(feed.id)
+        }
     })
 
 async function withFeedMetadata(input: FeedInput): Promise<Result<FeedInput, string>> {

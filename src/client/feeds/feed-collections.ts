@@ -17,7 +17,9 @@ export const feedCollection = createCollection(queryCollectionOptions<Feed>({
             name: feed.name,
             rssUrl: feed.rssUrl,
             voice: feed.voice,
-            language: feed.language
+            language: feed.language,
+            generationMode: feed.generationMode,
+            contentSource: feed.contentSource
         })
     },
     onUpdate: async ({ transaction }) => {
@@ -27,7 +29,9 @@ export const feedCollection = createCollection(queryCollectionOptions<Feed>({
             name: modified.name,
             rssUrl: modified.rssUrl,
             voice: modified.voice,
-            language: modified.language
+            language: modified.language,
+            generationMode: modified.generationMode,
+            contentSource: modified.contentSource
         })
     },
     onDelete: async ({ transaction }) => {

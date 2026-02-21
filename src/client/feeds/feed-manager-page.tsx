@@ -11,6 +11,18 @@ type FeedDraft = {
     rssUrl: string
     voice: string
     language: string
+    generationMode: string
+    contentSource: string
+}
+
+type FeedEpisode = {
+    id: number
+    title: string
+    sourceUrl: string
+    publishedAt: string | null
+    status: string
+    errorMessage: string | null
+    audioReady: boolean
 }
 
 let languageOptions = ['en']
@@ -18,9 +30,11 @@ let languageOptions = ['en']
 export function FeedManagerPage() {
     let [selectedFeedId, setSelectedFeedId] = useState<number | null>(null)
     let [isCreating, setIsCreating] = useState(false)
-    let [draft, setDraft] = useState<FeedDraft>({ name: '', rssUrl: '', voice: 'default', language: 'en' })
+    let [draft, setDraft] = useState<FeedDraft>({ name: '', rssUrl: '', voice: '', language: 'en', generationMode: 'on_demand', contentSource: 'feed_article' })
     let [error, setError] = useState('')
     let [status, setStatus] = useState('')
+    let [podcastUrl, setPodcastUrl] = useState('')
+    let [episodes, setEpisodes] = useState<FeedEpisode[]>([])
 
     let [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>([])
     let [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -37,8 +51,6 @@ export function FeedManagerPage() {
 
     let resolvedVoiceOptions = useMemo(() => {
         let options = [...voiceOptions]
-        if (options.length == 0)
-            options.push({ id: 'default', name: 'default', description: 'No provider voices configured', gender: 'unknown', provider: 'legacy' })
 
         if (draft.voice && !options.some(option => option.id == draft.voice)) {
             options.unshift({
@@ -72,12 +84,23 @@ export function FeedManagerPage() {
                 name: selectedFeed.name,
                 rssUrl: selectedFeed.rssUrl,
                 voice: selectedFeed.voice,
-                language: selectedFeed.language
+                language: selectedFeed.language,
+                generationMode: selectedFeed.generationMode,
+                contentSource: selectedFeed.contentSource
             })
         } else {
-            setDraft({ name: '', rssUrl: '', voice: getFallbackVoiceId(voiceOptions), language: 'en' })
+            setDraft({ name: '', rssUrl: '', voice: getFallbackVoiceId(voiceOptions), language: 'en', generationMode: 'on_demand', contentSource: 'feed_article' })
         }
     }, [selectedFeed, voiceOptions])
+
+    useEffect(() => {
+        if (selectedFeedId != null)
+            void loadEpisodes(selectedFeedId)
+        else {
+            setPodcastUrl('')
+            setEpisodes([])
+        }
+    }, [selectedFeedId])
 
     useEffect(() => {
         void loadSettings()
@@ -144,7 +167,7 @@ export function FeedManagerPage() {
                                 setIsCreating(true)
                                 setStatus('')
                                 setError('')
-                                setDraft({ name: '', rssUrl: '', voice: getFallbackVoiceId(resolvedVoiceOptions), language: 'en' })
+                                setDraft({ name: '', rssUrl: '', voice: getFallbackVoiceId(resolvedVoiceOptions), language: 'en', generationMode: 'on_demand', contentSource: 'feed_article' })
                             }}
                             type="button"
                         >
@@ -160,10 +183,12 @@ export function FeedManagerPage() {
                     error={error}
                     isEditing={selectedFeed != null}
                     languageOptions={languageOptions}
+                    podcastUrl={podcastUrl}
+                    episodes={episodes}
                     onCancel={() => {
                         setSelectedFeedId(null)
                         setIsCreating(false)
-                        setDraft({ name: '', rssUrl: '', voice: getFallbackVoiceId(resolvedVoiceOptions), language: 'en' })
+                        setDraft({ name: '', rssUrl: '', voice: getFallbackVoiceId(resolvedVoiceOptions), language: 'en', generationMode: 'on_demand', contentSource: 'feed_article' })
                         setStatus('')
                         setError('')
                     }}
@@ -222,15 +247,19 @@ export function FeedManagerPage() {
                 f.rssUrl = draft.rssUrl.trim()
                 f.voice = draft.voice
                 f.language = draft.language
+                f.generationMode = draft.generationMode
+                f.contentSource = draft.contentSource
                 f.updatedAt = new Date().toISOString()
             })
             setStatus('Feed updated')
+            await loadEpisodes(selectedFeed.id)
         } else {
             let newFeed = {
                 id: -feedCollection.size,
                 ...draft,
                 description: null,
                 imageUrl: null,
+                podcastSlug: '',
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString()
             }
@@ -250,7 +279,21 @@ export function FeedManagerPage() {
         feedCollection.delete(selectedFeed.id.toString())
         setSelectedFeedId(null)
         setIsCreating(false)
+        setEpisodes([])
+        setPodcastUrl('')
         setStatus('Feed deleted')
+    }
+
+    async function loadEpisodes(feedId: number) {
+        try {
+            let response = await api.feeds.episodes.query({ id: feedId })
+            setEpisodes(response.episodes)
+            setPodcastUrl(`${window.location.origin}${response.podcastUrl}`)
+        }
+        catch {
+            setEpisodes([])
+            setPodcastUrl('')
+        }
     }
 
     async function loadVoices() {
@@ -356,7 +399,7 @@ function getFallbackVoiceId(voiceOptions: VoiceOption[]) {
     if (firstVoice)
         return firstVoice.id
 
-    return 'default'
+    return ''
 }
 
 cssRules({

@@ -9,14 +9,23 @@ export const FeedInput = object({
     voice: pipe(
         string('Voice is required'),
         trim(),
-        minLength(1, 'Voice is required'),
-        check((value) => value == 'default' || /^(inworld|openai|elevenlabs):.+$/.test(value), 'Voice must be provider-scoped')
+        minLength(1, 'Voice is required')
     ),
     language: pipe(
         string('Language is required'),
         trim(),
         minLength(1, 'Language is required'),
         check((value) => allowedLanguages.includes(value), `Language must be one of: ${allowedLanguages.join(', ')}`)
+    ),
+    generationMode: pipe(
+        string('Generation mode is required'),
+        trim(),
+        check((value) => value == 'on_demand' || value == 'every_episode', 'Generation mode must be on_demand or every_episode')
+    ),
+    contentSource: pipe(
+        string('Content source is required'),
+        trim(),
+        check((value) => value == 'feed_article' || value == 'source_page', 'Content source must be feed_article or source_page')
     )
 })
 
