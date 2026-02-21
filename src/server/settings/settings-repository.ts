@@ -65,13 +65,13 @@ export function listCachedVoicesByProvider(providerType: TtsProvider) {
         .all()
 }
 
-    export function getCachedVoiceById(id: string) {
-        return database
+export function getCachedVoiceById(id: string) {
+    return database
         .select()
         .from(ttsVoicesTable)
         .where(eq(ttsVoicesTable.id, id))
         .get() || null
-    }
+}
 
 export function replaceProviderVoices(providerType: TtsProvider, voices: VoiceRecord[]) {
     database

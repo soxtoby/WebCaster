@@ -22,7 +22,7 @@ export function getFeedById(id: number) {
 }
 
 export function createFeed(input: FeedInput & { description?: string | null; imageUrl?: string | null }) {
-    let podcastSlug = createPodcastSlug()
+    let podcastSlug = generateSlug(input.name)
     let created = database
         .insert(feedsTable)
         .values({
@@ -69,8 +69,14 @@ export function updateFeedById(id: number, input: FeedInput & { description?: st
     return updated
 }
 
-function createPodcastSlug() {
-    return `feed-${Math.random().toString(36).slice(2, 12)}`
+function generateSlug(title: string): string {
+    let base = title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "")
+        .slice(0, 40)
+    let random = Math.random().toString(36).slice(2, 8)
+    return `${base}-${random}`
 }
 
 export function deleteFeedById(id: number) {

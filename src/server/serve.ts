@@ -10,8 +10,8 @@ let server = serve({
     port: 3000,
     routes: {
         '/': index,
-        '/podcast/:slug.xml': async (request) => {
-            let slug = request.params?.['slug.xml'] || ''
+        '/podcast/:slug': async (request) => {
+            let slug = request.params.slug.replace(/\.xml$/, '')
             let feed = await getFeedByPodcastSlug(slug)
             if (!feed)
                 return new Response('Feed not found', { status: 404 })
@@ -24,9 +24,9 @@ let server = serve({
                 }
             })
         },
-        '/audio/:slug/:episodeId.mp3': async (request) => {
-            let slug = request.params?.slug || ''
-            let episodeIdRaw = request.params?.['episodeId.mp3'] || ''
+        '/audio/:slug/:episodeId': async (request) => {
+            let slug = request.params.slug.replace(/\.xml$/, '')
+            let episodeIdRaw = request.params.episodeId || ''
             let episodeId = Number(episodeIdRaw)
             if (!Number.isInteger(episodeId) || episodeId <= 0)
                 return new Response('Episode not found', { status: 404 })
