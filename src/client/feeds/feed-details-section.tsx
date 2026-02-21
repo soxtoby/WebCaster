@@ -8,6 +8,14 @@ type FeedDraft = {
     language: string
 }
 
+export type VoiceOption = {
+    id: string
+    name: string
+    description: string
+    gender: 'male' | 'female' | 'unknown'
+    provider: string
+}
+
 export function FeedDetailsSection(props: {
     draft: FeedDraft
     error: string
@@ -18,7 +26,7 @@ export function FeedDetailsSection(props: {
     onDraftChange: (field: keyof FeedDraft, value: string) => void
     onSubmit: () => void
     status: string
-    voiceOptions: string[]
+    voiceOptions: VoiceOption[]
 }) {
     return <section className={classes(panelStyle)}>
         <h2 className={classes(panelHeadingStyle)}>{props.isEditing ? 'Feed details' : 'Add feed'}</h2>
@@ -41,13 +49,13 @@ export function FeedDetailsSection(props: {
                 onChange={value => props.onDraftChange('rssUrl', value)}
                 placeholder="https://example.com/feed.xml"
             />
-            <SelectField
+            <VoiceSelectField
                 label="Voice"
                 value={props.draft.voice}
                 options={props.voiceOptions}
                 onChange={value => props.onDraftChange('voice', value)}
             />
-            <SelectField
+            <TextSelectField
                 label="Language"
                 value={props.draft.language}
                 options={props.languageOptions}
@@ -102,7 +110,25 @@ function Field(props: {
     </label>
 }
 
-function SelectField(props: {
+function VoiceSelectField(props: {
+    label: string
+    value: string
+    options: VoiceOption[]
+    onChange: (value: string) => void
+}) {
+    return <label className={classes(fieldGroupStyle)}>
+        <span className={classes(labelStyle)}>{props.label}</span>
+        <select
+            className={classes(inputStyle)}
+            onChange={(event: ChangeEvent<HTMLSelectElement>) => props.onChange(event.target.value)}
+            value={props.value}
+        >
+            {props.options.map(option => <option key={option.id} value={option.id}>{buildVoiceLabel(option)}</option>)}
+        </select>
+    </label>
+}
+
+function TextSelectField(props: {
     label: string
     value: string
     options: string[]
@@ -118,6 +144,15 @@ function SelectField(props: {
             {props.options.map(option => <option key={option} value={option}>{option}</option>)}
         </select>
     </label>
+}
+
+function buildVoiceLabel(option: VoiceOption) {
+    let pieces = [option.name]
+    if (option.description)
+        pieces.push(option.description)
+    pieces.push(option.gender)
+    pieces.push(option.provider)
+    return pieces.join(' · ')
 }
 
 let panelStyle = style('detailsPanel', {

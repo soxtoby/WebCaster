@@ -2,7 +2,7 @@ import { fetchRequestHandler } from "@trpc/server/adapters/fetch"
 import { serve } from "bun"
 import index from "../client/index.html"
 import { setupNotificationIcon } from "./notification-icon"
-import { appRouter } from "./trpc/router"
+import { appRouter } from "./trpc/app-router"
 
 let server = serve({
     development: true,

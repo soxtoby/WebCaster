@@ -12,6 +12,8 @@
         "@trpc/server": "^11.10.0",
         "better-result": "^2.7.0",
         "drizzle-orm": "^0.45.1",
+        "gender-detection-from-name": "^1.11.4",
+        "inworld-tts": "^2.2.0",
         "not-the-systray": "^0.3.1",
         "open": "^11.0.0",
         "react": "^19.2.4",
@@ -149,7 +151,11 @@
 
     "fractional-indexing": ["fractional-indexing@3.2.0", "", {}, "sha512-PcOxmqwYCW7O2ovKRU8OoQQj2yqTfEB/yeTYk4gPid6dN5ODRfU1hXd9tTVZzax/0NkO7AxpHykvZnT1aYp/BQ=="],
 
+    "gender-detection-from-name": ["gender-detection-from-name@1.11.4", "", {}, "sha512-OI6GTyMqfcCKRFZ28IoEyobVa63K1b+V+gmoY5E0x10mu3G3u3iwoReYTn61OPjqnGfDZlCW4gRBGxgBr68w2g=="],
+
     "get-tsconfig": ["get-tsconfig@4.13.6", "", { "dependencies": { "resolve-pkg-maps": "^1.0.0" } }, "sha512-shZT/QMiSHc/YBLxxOkMtgSid5HFoauqCE3/exfsEcwg1WkeqjG+V40yBbBrsD+jW2HDXcs28xOfcbm2jI8Ddw=="],
+
+    "inworld-tts": ["inworld-tts@2.2.0", "", { "bin": { "inworld-tts": "dist/cli.js" } }, "sha512-Gb1Q7uIql8dUhj1NTEa7vkALVQtIej+G2GPSnfQ2O3GR5J/hyGO0gdWf7wAxGfFBCad+FoDGwzB5ZFID7t9UOQ=="],
 
     "is-docker": ["is-docker@3.0.0", "", { "bin": { "is-docker": "cli.js" } }, "sha512-eljcgEDlEns/7AXFosB5K/2nCM4P7FQPkGc/DWLy5rmFEWvZayGrik1d9/QIY5nJ4f9YsVvBkA6kJpHn9rISdQ=="],
 

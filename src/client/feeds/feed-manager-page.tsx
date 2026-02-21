@@ -1,8 +1,10 @@
 import { useLiveQuery } from "@tanstack/react-db"
 import { useEffect, useMemo, useState } from "react"
 import { classes, cssRules, style } from "stylemap"
+import { api } from "../api"
 import { feedCollection } from "./feed-collections"
-import { FeedDetailsSection } from "./feed-details-section"
+import { FeedDetailsSection, type VoiceOption } from "./feed-details-section"
+import { type ProviderSettingsDraft, TtsSettingsModal, type TtsSettingsDraft } from "./tts-settings-modal"
 
 type FeedDraft = {
     name: string
@@ -11,7 +13,6 @@ type FeedDraft = {
     language: string
 }
 
-let voiceOptions = ['default']
 let languageOptions = ['en']
 
 export function FeedManagerPage() {
@@ -21,11 +22,36 @@ export function FeedManagerPage() {
     let [error, setError] = useState('')
     let [status, setStatus] = useState('')
 
+    let [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>([])
+    let [isSettingsOpen, setIsSettingsOpen] = useState(false)
+    let [settingsDraft, setSettingsDraft] = useState<TtsSettingsDraft>(createDefaultSettingsDraft())
+    let [settingsStatus, setSettingsStatus] = useState('')
+    let [settingsError, setSettingsError] = useState('')
+    let [isSavingSettings, setIsSavingSettings] = useState(false)
+
     let { data: feeds = [], isLoading, isError } = useLiveQuery(q => q.from({ feedCollection }))
 
     let selectedFeed = useMemo(() => {
         return feeds.find(feed => feed.id == selectedFeedId) ?? null
     }, [feeds, selectedFeedId])
+
+    let resolvedVoiceOptions = useMemo(() => {
+        let options = [...voiceOptions]
+        if (options.length == 0)
+            options.push({ id: 'default', name: 'default', description: 'No provider voices configured', gender: 'unknown', provider: 'legacy' })
+
+        if (draft.voice && !options.some(option => option.id == draft.voice)) {
+            options.unshift({
+                id: draft.voice,
+                name: draft.voice,
+                description: 'Saved voice',
+                gender: 'unknown',
+                provider: 'saved'
+            })
+        }
+
+        return options
+    }, [voiceOptions, draft.voice])
 
     useEffect(() => {
         if (feeds.length > 0) {
@@ -49,14 +75,32 @@ export function FeedManagerPage() {
                 language: selectedFeed.language
             })
         } else {
-            setDraft({ name: '', rssUrl: '', voice: 'default', language: 'en' })
+            setDraft({ name: '', rssUrl: '', voice: getFallbackVoiceId(voiceOptions), language: 'en' })
         }
-    }, [selectedFeed])
+    }, [selectedFeed, voiceOptions])
+
+    useEffect(() => {
+        void loadSettings()
+        void loadVoices()
+    }, [])
 
     return <div className={classes(pageStyle)}>
-        <header>
-            <h1 className={classes(headingStyle)}>RSS Feeds</h1>
-            <p className={classes(subtitleStyle)}>Manage feed sources and narration defaults in one view.</p>
+        <header className={classes(headerStyle)}>
+            <div>
+                <h1 className={classes(headingStyle)}>RSS Feeds</h1>
+                <p className={classes(subtitleStyle)}>Manage feed sources and narration defaults in one view.</p>
+            </div>
+            <button
+                className={classes(buttonStyle)}
+                onClick={() => {
+                    setSettingsError('')
+                    setSettingsStatus('')
+                    setIsSettingsOpen(true)
+                }}
+                type="button"
+            >
+                TTS settings
+            </button>
         </header>
 
         <div className={classes(layoutStyle)}>
@@ -100,6 +144,7 @@ export function FeedManagerPage() {
                                 setIsCreating(true)
                                 setStatus('')
                                 setError('')
+                                setDraft({ name: '', rssUrl: '', voice: getFallbackVoiceId(resolvedVoiceOptions), language: 'en' })
                             }}
                             type="button"
                         >
@@ -118,9 +163,9 @@ export function FeedManagerPage() {
                     onCancel={() => {
                         setSelectedFeedId(null)
                         setIsCreating(false)
-                        setDraft({ name: "", rssUrl: "", voice: "default", language: "en" })
-                        setStatus("")
-                        setError("")
+                        setDraft({ name: '', rssUrl: '', voice: getFallbackVoiceId(resolvedVoiceOptions), language: 'en' })
+                        setStatus('')
+                        setError('')
                     }}
                     onDelete={() => removeFeed()}
                     onDraftChange={(field, value) => {
@@ -130,10 +175,31 @@ export function FeedManagerPage() {
                         void saveFeed()
                     }}
                     status={status}
-                    voiceOptions={voiceOptions}
+                    voiceOptions={resolvedVoiceOptions}
                 />
                 : null}
         </div>
+
+        <TtsSettingsModal
+            draft={settingsDraft}
+            error={settingsError}
+            isOpen={isSettingsOpen}
+            isSaving={isSavingSettings}
+            onChange={(provider, field, value) => {
+                setSettingsDraft(current => ({
+                    ...current,
+                    [provider]: {
+                        ...current[provider],
+                        [field]: value
+                    }
+                }))
+            }}
+            onClose={() => setIsSettingsOpen(false)}
+            onSave={() => {
+                void saveSettings()
+            }}
+            status={settingsStatus}
+        />
     </div>
 
     async function saveFeed() {
@@ -145,6 +211,11 @@ export function FeedManagerPage() {
             return
         }
 
+        if (!draft.voice.trim()) {
+            setError('Voice is required')
+            return
+        }
+
         if (selectedFeed) {
             feedCollection.update(selectedFeed.id.toString(), f => {
                 f.name = draft.name.trim()
@@ -152,7 +223,7 @@ export function FeedManagerPage() {
                 f.voice = draft.voice
                 f.language = draft.language
                 f.updatedAt = new Date().toISOString()
-            });
+            })
             setStatus('Feed updated')
         } else {
             let newFeed = {
@@ -181,6 +252,111 @@ export function FeedManagerPage() {
         setIsCreating(false)
         setStatus('Feed deleted')
     }
+
+    async function loadVoices() {
+        try {
+            let response = await api.voices.list.query()
+            let voices = response.voices.map(voice => ({
+                id: voice.id,
+                name: voice.name,
+                description: voice.description,
+                gender: voice.gender,
+                provider: voice.provider
+            }))
+            setVoiceOptions(voices)
+        }
+        catch {
+            setVoiceOptions([])
+        }
+    }
+
+    async function loadSettings() {
+        try {
+            let response = await api.settings.get.query()
+            setSettingsDraft(response.settings)
+        }
+        catch {
+            setSettingsError('Could not load TTS settings')
+        }
+    }
+
+    async function saveSettings() {
+        setSettingsError('')
+        setSettingsStatus('')
+
+        let validationError = validateSettings(settingsDraft)
+        if (validationError) {
+            setSettingsError(validationError)
+            return
+        }
+
+        try {
+            setIsSavingSettings(true)
+            let response = await api.settings.save.mutate({ settings: settingsDraft })
+            setSettingsDraft(response.settings)
+            setSettingsStatus('Settings saved')
+            await loadVoices()
+            setIsSettingsOpen(false)
+        }
+        catch {
+            setSettingsError('Could not save TTS settings')
+        }
+        finally {
+            setIsSavingSettings(false)
+        }
+    }
+}
+
+function createDefaultSettingsDraft(): TtsSettingsDraft {
+    return {
+        inworld: {
+            enabled: false,
+            apiKey: '',
+            baseUrl: 'https://api.inworld.ai'
+        },
+        openai: {
+            enabled: false,
+            apiKey: '',
+            baseUrl: 'https://api.openai.com/v1'
+        },
+        elevenlabs: {
+            enabled: false,
+            apiKey: '',
+            baseUrl: 'https://api.elevenlabs.io'
+        },
+        lemonfox: {
+            enabled: false,
+            apiKey: '',
+            baseUrl: 'https://api.lemonfox.ai/v1'
+        }
+    }
+}
+
+function validateSettings(settings: TtsSettingsDraft) {
+    let providers: Array<{ name: string; value: ProviderSettingsDraft }> = [
+        { name: 'Inworld', value: settings.inworld },
+        { name: 'OpenAI', value: settings.openai },
+        { name: 'ElevenLabs', value: settings.elevenlabs },
+        { name: 'Lemonfox', value: settings.lemonfox }
+    ]
+
+    for (let provider of providers) {
+        if (provider.value.enabled && !provider.value.apiKey.trim())
+            return `${provider.name} API key is required when enabled`
+
+        if (!provider.value.baseUrl.trim())
+            return `${provider.name} base URL is required`
+    }
+
+    return ''
+}
+
+function getFallbackVoiceId(voiceOptions: VoiceOption[]) {
+    let firstVoice = voiceOptions.at(0)
+    if (firstVoice)
+        return firstVoice.id
+
+    return 'default'
 }
 
 cssRules({
@@ -230,6 +406,13 @@ let pageStyle = style('page', {
     gridTemplateRows: 'auto 1fr',
     gap: 16,
     padding: 20
+})
+
+let headerStyle = style('header', {
+    display: 'flex',
+    alignItems: 'start',
+    justifyContent: 'space-between',
+    gap: 12
 })
 
 let headingStyle = style('heading', {

@@ -1,6 +1,5 @@
 import { check, type InferOutput, integer, minLength, minValue, number, object, pipe, string, trim, url } from "valibot"
 
-let allowedVoices = ['default']
 let allowedLanguages = ['en']
 
 export type FeedInput = InferOutput<typeof FeedInput>
@@ -11,7 +10,7 @@ export const FeedInput = object({
         string('Voice is required'),
         trim(),
         minLength(1, 'Voice is required'),
-        check((value) => allowedVoices.includes(value), `Voice must be one of: ${allowedVoices.join(', ')}`)
+        check((value) => value == 'default' || /^(inworld|openai|elevenlabs):.+$/.test(value), 'Voice must be provider-scoped')
     ),
     language: pipe(
         string('Language is required'),

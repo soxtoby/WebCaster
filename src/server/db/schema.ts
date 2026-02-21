@@ -28,3 +28,24 @@ export const articlesTable = sqliteTable('articles', {
     createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
     updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`)
 })
+
+export type TtsProviderSetting = InferSelectModel<typeof ttsProviderSettingsTable>
+export const ttsProviderSettingsTable = sqliteTable('tts_provider_settings', {
+    providerType: text('provider_type').primaryKey(),
+    enabled: integer('enabled', { mode: 'boolean' }).notNull().default(false),
+    apiKey: text('api_key').notNull().default(''),
+    baseUrl: text('base_url'),
+    createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`)
+})
+
+export type TtsVoice = InferSelectModel<typeof ttsVoicesTable>
+export const ttsVoicesTable = sqliteTable('tts_voices', {
+    id: text('id').primaryKey(),
+    provider: text('provider').notNull(),
+    providerVoiceId: text('provider_voice_id').notNull(),
+    name: text('name').notNull(),
+    description: text('description'),
+    gender: text('gender').notNull(),
+    updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`)
+})

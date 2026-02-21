@@ -24,10 +24,15 @@ This project was created using `bun init` in bun v1.3.8. [Bun](https://bun.com) 
 
 The app includes a single-page RSS feed manager with feed list and feed details on the same screen.
 
-Fields:
+- TTS provider settings open in a modal dialog over the main page.
+- Supported providers: Inworld, OpenAI, ElevenLabs.
+- Voice selector merges voices from configured providers and shows voice name, description, gender, and source.
+- If a provider does not return gender, gender is inferred from voice name with `unknown` fallback.
+
+Feed fields:
 - Name
 - RSS URL
-- Voice (`default`)
+- Voice (provider-scoped voice id)
 - Language (`en`)
 
 The UI follows the system color preference using `prefers-color-scheme`.
