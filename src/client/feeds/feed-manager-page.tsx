@@ -3,8 +3,9 @@ import { useEffect, useMemo, useState } from "react"
 import { classes, cssRules, style } from "stylemap"
 import { api } from "../api"
 import { feedCollection } from "./feed-collections"
-import { FeedDetailsSection, type VoiceOption } from "./feed-details-section"
+import { FeedDetailsSection } from "./feed-details-section"
 import { type ProviderSettingsDraft, TtsSettingsModal, type TtsSettingsDraft } from "./tts-settings-modal"
+import { type VoiceOption } from "./voice-selector-field"
 
 type FeedDraft = {
     name: string
@@ -55,7 +56,7 @@ export function FeedManagerPage() {
         if (draft.voice && !options.some(option => option.id == draft.voice)) {
             options.unshift({
                 id: draft.voice,
-                name: draft.voice,
+                name: 'Saved voice',
                 description: 'Saved voice',
                 gender: 'unknown',
                 provider: 'saved'

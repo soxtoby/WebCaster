@@ -1,6 +1,8 @@
 import { join } from "node:path"
 
-let appDataPath = process.env.APPDATA || process.env.LOCALAPPDATA || 'data'
+export let appDataDirectory = join(process.env.APPDATA || process.env.LOCALAPPDATA || 'data', 'WebCaster')
+export let dbPath = join(appDataDirectory, 'webcaster.sqlite')
 
-export let dbDirectory = join(appDataPath, 'WebCaster')
-export let dbPath = join(dbDirectory, 'webcaster.sqlite')
+export function resolvePreviewPath(previewKey: string) {
+	return join(appDataDirectory, 'voice-previews', `${previewKey}.mp3`)
+}

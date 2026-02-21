@@ -1,5 +1,6 @@
 import { type ChangeEvent } from "react"
 import { classes, style } from "stylemap"
+import { VoiceSelectorField, type VoiceOption } from "./voice-selector-field"
 
 type FeedDraft = {
     name: string
@@ -18,14 +19,6 @@ type Episode = {
     status: string
     errorMessage: string | null
     audioReady: boolean
-}
-
-export type VoiceOption = {
-    id: string
-    name: string
-    description: string
-    gender: 'male' | 'female' | 'unknown'
-    provider: string
 }
 
 export function FeedDetailsSection(props: {
@@ -63,7 +56,7 @@ export function FeedDetailsSection(props: {
                 onChange={value => props.onDraftChange('rssUrl', value)}
                 placeholder="https://example.com/feed.xml"
             />
-            <VoiceSelectField
+            <VoiceSelectorField
                 label="Voice"
                 value={props.draft.voice}
                 options={props.voiceOptions}
@@ -156,25 +149,6 @@ function Field(props: {
     </label>
 }
 
-function VoiceSelectField(props: {
-    label: string
-    value: string
-    options: VoiceOption[]
-    onChange: (value: string) => void
-}) {
-    return <label className={classes(fieldGroupStyle)}>
-        <span className={classes(labelStyle)}>{props.label}</span>
-        <select
-            className={classes(inputStyle)}
-            onChange={(event: ChangeEvent<HTMLSelectElement>) => props.onChange(event.target.value)}
-            value={props.value}
-        >
-            {props.options.length == 0 ? <option value="">No voices available</option> : null}
-            {props.options.map(option => <option key={option.id} value={option.id}>{buildVoiceLabel(option)}</option>)}
-        </select>
-    </label>
-}
-
 function TextSelectField(props: {
     label: string
     value: string
@@ -191,15 +165,6 @@ function TextSelectField(props: {
             {props.options.map(option => <option key={option} value={option}>{option}</option>)}
         </select>
     </label>
-}
-
-function buildVoiceLabel(option: VoiceOption) {
-    let pieces = [option.name]
-    if (option.description)
-        pieces.push(option.description)
-    pieces.push(option.gender)
-    pieces.push(option.provider)
-    return pieces.join(' · ')
 }
 
 let panelStyle = style('detailsPanel', {

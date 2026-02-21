@@ -1,7 +1,7 @@
 import { Result } from "better-result"
 import { type TtsProvider, type TtsProviderSettings, type VoiceRecord } from "../settings/settings-types"
 import { listElevenLabsVoices } from "./elevenlabs"
-import { listInworldVoices } from "./inworld"
+import { listInworldVoices, streamInworldSpeech } from "./inworld"
 import { listLemonFoxVoices } from "./lemonfox"
 import { listOpenAiVoices } from "./openai"
 import { buildUrl } from "./tts-utils"
@@ -38,7 +38,7 @@ export async function streamSpeech(provider: TtsProvider, providerVoiceId: strin
     if (provider == 'elevenlabs')
         return await streamElevenLabsSpeech(providerVoiceId, text, settings)
 
-    return Result.err('Inworld streaming TTS is not implemented yet')
+    return await streamInworldSpeech(providerVoiceId, text, settings)
 }
 
 async function streamOpenAiCompatibleSpeech(provider: 'openai' | 'lemonfox', providerVoiceId: string, text: string, settings: TtsProviderSettings): Promise<Result<StreamedAudio, string>> {

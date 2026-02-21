@@ -4,6 +4,7 @@ import index from "../client/index.html"
 import { buildPodcastFeedXml, getFeedByPodcastSlug, startFeedPolling, streamEpisodeAudio } from "./feeds/feed-podcast"
 import { setupNotificationIcon } from "./notification-icon"
 import { appRouter } from "./trpc/app-router"
+import { streamVoicePreviewAudio } from "./tts/voice-preview"
 
 let server = serve({
     development: true,
@@ -23,6 +24,9 @@ let server = serve({
                     'content-type': 'application/rss+xml; charset=utf-8'
                 }
             })
+        },
+        '/audio/preview/:voiceId': async (request) => {
+            return await streamVoicePreviewAudio(request.params.voiceId)
         },
         '/audio/:slug/:episodeId': async (request) => {
             let slug = request.params.slug.replace(/\.xml$/, '')

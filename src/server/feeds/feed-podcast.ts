@@ -3,7 +3,7 @@ import { Result } from "better-result"
 import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 import { database } from "../db"
-import { dbDirectory } from "../db/location"
+import { appDataDirectory } from "../db/location"
 import { articlesTable, feedsTable, type Article, type Feed } from "../db/schema"
 import { getCachedVoiceById, listProviderSettings } from "../settings/settings-repository"
 import { type TtsProvider } from "../settings/settings-types"
@@ -224,7 +224,7 @@ function isTtsProvider(value: string): value is TtsProvider {
 
 async function persistAudioStream(stream: ReadableStream<Uint8Array>, outputPath: string, articleId: number, feed: Feed, serverBaseUrl: string) {
     try {
-        mkdirSync(join(dbDirectory, 'audio', feed.podcastSlug), { recursive: true })
+        mkdirSync(join(appDataDirectory, 'audio', feed.podcastSlug), { recursive: true })
         await writeStreamToFile(stream, outputPath)
         markArticleReady(articleId, outputPath, buildAudioUrl(feed, articleId, serverBaseUrl))
     }
@@ -497,7 +497,7 @@ function escapeXml(value: string) {
 }
 
 function resolveAudioPath(podcastSlug: string, articleId: number) {
-    return join(dbDirectory, 'audio', podcastSlug, `${articleId}.mp3`)
+    return join(appDataDirectory, 'audio', podcastSlug, `${articleId}.mp3`)
 }
 
 function buildAudioUrl(feed: Feed, articleId: number, serverBaseUrl: string) {
