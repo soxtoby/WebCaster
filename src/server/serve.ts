@@ -1,20 +1,21 @@
+import { fetchRequestHandler } from "@trpc/server/adapters/fetch"
 import { serve } from "bun"
 import index from "../client/index.html"
-import { createFeed, deleteFeed, listFeeds, updateFeed } from "./feeds/handlers"
 import { setupNotificationIcon } from "./notification-icon"
+import { appRouter } from "./trpc/router"
 
 let server = serve({
     development: true,
     port: 3000,
     routes: {
         '/': index,
-        '/api/feeds': {
-            GET: listFeeds,
-            POST: createFeed
-        },
-        '/api/feeds/:id': {
-            PUT: updateFeed,
-            DELETE: deleteFeed
+        '/api/:procedure': (request) => {
+            return fetchRequestHandler({
+                endpoint: '/api',
+                req: request,
+                router: appRouter,
+                createContext: () => ({})
+            })
         }
     }
 })

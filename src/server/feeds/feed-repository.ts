@@ -1,7 +1,7 @@
 import { desc, eq, sql } from "drizzle-orm"
 import { database } from "../db"
 import { feedsTable } from "../db/schema"
-import type { FeedInput } from "./FeedInput"
+import type { FeedInput } from "./feed-types"
 
 export function listFeeds() {
     return database

@@ -1,4 +1,4 @@
-import { type InferOutput, object, pipe, string, trim, minLength, url, check } from "valibot"
+import { check, type InferOutput, integer, minLength, minValue, number, object, pipe, string, trim, url } from "valibot"
 
 let allowedVoices = ['default']
 let allowedLanguages = ['en']
@@ -19,4 +19,18 @@ export const FeedInput = object({
         minLength(1, 'Language is required'),
         check((value) => allowedLanguages.includes(value), `Language must be one of: ${allowedLanguages.join(', ')}`)
     )
+})
+
+export type FeedIdInput = InferOutput<typeof FeedIdInput>
+export const FeedIdInput = object({
+    id: pipe(
+        number('Invalid feed id'),
+        integer('Invalid feed id'),
+        minValue(1, 'Invalid feed id'))
+})
+
+export type FeedUpdateInput = InferOutput<typeof FeedUpdateInput>
+export const FeedUpdateInput = object({
+    ...FeedIdInput.entries,
+    ...FeedInput.entries
 })
