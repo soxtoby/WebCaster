@@ -1,6 +1,7 @@
-import { array, object, safeParse, string, type InferOutput } from "valibot"
+import { array, object, string, type InferOutput } from "valibot"
+import { fetchJson, fetchResponse } from "../http/request"
 import { type TtsProviderSettings, type VoiceRecord } from "../settings/settings-types"
-import { buildUrl, detectGenderFromName } from "./tts-utils"
+import { detectGenderFromName } from "./tts-utils"
 
 type InworldSpeechResponse = {
     result?: {
@@ -33,48 +34,48 @@ export let inworldDefaults: TtsProviderSettings = {
 }
 
 export async function listInworldVoices(settings: TtsProviderSettings): Promise<VoiceRecord[]> {
-    let response = await fetch(buildUrl(settings.baseUrl, '/voices/v1/voices'), {
-        headers: {
-            Authorization: `Basic ${settings.apiKey.trim()}`,
-            Accept: 'application/json'
+    let response = await fetchJson(
+        'Inworld voices',
+        InworldListVoicesResponse,
+        settings.baseUrl,
+        '/voices/v1/voices',
+        {
+            headers: {
+                Authorization: `Basic ${settings.apiKey.trim()}`,
+                Accept: 'application/json'
+            }
         }
-    })
+    )
 
-    if (!response.ok)
-        throw new Error('Inworld voice API request failed')
-
-    let payload = await response.json()
-    let parsed = safeParse(InworldListVoicesResponse, payload)
-    if (!parsed.success) {
-        console.error('Inworld voice API response validation failed', parsed.issues)
-        throw new Error('Inworld voice API response was invalid')
-    }
-
-    return parsed.output.voices
+    return response.voices
         .map(entry => mapInworldVoice(entry))
 }
 
 export async function streamInworldSpeech(providerVoiceId: string, text: string, settings: TtsProviderSettings): Promise<{ stream: ReadableStream<Uint8Array>; mimeType: string }> {
-    let endpoint = buildUrl(settings.baseUrl, '/tts/v1/voice:stream')
-    let response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-            Authorization: `Basic ${settings.apiKey.trim()}`,
-            'Content-Type': 'application/json',
-            Accept: 'application/json'
-        },
-        body: JSON.stringify({
-            text,
-            voiceId: providerVoiceId,
-            modelId: 'inworld-tts-1.5-max',
-            audioConfig: {
-                audioEncoding: 'MP3'
+    let response = await fetchResponse(
+        'Inworld speech stream',
+        settings.baseUrl,
+        '/tts/v1/voice:stream',
+        {
+            method: 'POST',
+            headers: {
+                Authorization: `Basic ${settings.apiKey.trim()}`,
+                'Content-Type': 'application/json',
+                Accept: 'application/json'
             },
-            autoMode: true
-        })
-    })
+            body: JSON.stringify({
+                text,
+                voiceId: providerVoiceId,
+                modelId: 'inworld-tts-1.5-max',
+                audioConfig: {
+                    audioEncoding: 'MP3'
+                },
+                autoMode: true
+            })
+        }
+    )
 
-    if (!response.ok || !response.body)
+    if (!response.body)
         throw new Error('inworld audio generation failed')
 
     return {

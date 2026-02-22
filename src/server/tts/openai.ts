@@ -1,3 +1,4 @@
+import { fetchStream } from "../http/request"
 import { type TtsProviderSettings, type VoiceRecord } from "../settings/settings-types"
 
 export let openAiDefaults: TtsProviderSettings = {
@@ -22,4 +23,31 @@ export async function listOpenAiVoices(settings: TtsProviderSettings): Promise<V
         { name: 'Marin', providerVoiceId: 'marin', id: 'openai:marin', description: "Natural, conversational, smooth and modern.", gender: 'female', provider: 'openai' },
         { name: 'Cedar', providerVoiceId: 'cedar', id: 'openai:cedar', description: "Calm, grounded, steady and reassuring.", gender: 'male', provider: 'openai' },
     ]
+}
+
+export async function streamOpenAiSpeech(provider: 'openai' | 'lemonfox', providerVoiceId: string, text: string, settings: TtsProviderSettings): Promise<{ stream: ReadableStream<Uint8Array>; mimeType: string }> {
+    let stream = await fetchStream(
+        `${provider} speech`,
+        settings.baseUrl,
+        '/audio/speech',
+        {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${settings.apiKey}`,
+                'Content-Type': 'application/json',
+                Accept: 'audio/mpeg'
+            },
+            body: JSON.stringify({
+                model: 'gpt-4o-mini-tts',
+                voice: providerVoiceId,
+                input: text,
+                format: 'mp3'
+            })
+        }
+    )
+
+    return {
+        stream,
+        mimeType: 'audio/mpeg'
+    }
 }

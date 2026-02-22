@@ -1,5 +1,11 @@
+import { array, object, unknown } from "valibot"
+import { fetchJson, fetchStream } from "../http/request"
 import { type TtsProviderSettings, type VoiceRecord } from "../settings/settings-types"
-import { buildUrl, detectGenderFromName, normalizeReportedGender } from "./tts-utils"
+import { detectGenderFromName, normalizeReportedGender } from "./tts-utils"
+
+let ElevenLabsListVoicesResponse = object({
+    voices: array(unknown())
+})
 
 export let elevenLabsDefaults: TtsProviderSettings = {
     enabled: false,
@@ -8,20 +14,19 @@ export let elevenLabsDefaults: TtsProviderSettings = {
 }
 
 export async function listElevenLabsVoices(settings: TtsProviderSettings): Promise<VoiceRecord[]> {
-    let endpoint = buildUrl(settings.baseUrl, '/v1/voices')
-    let response = await fetch(endpoint, {
-        headers: {
-            'xi-api-key': settings.apiKey,
-            Accept: 'application/json'
+    let response = await fetchJson(
+        'ElevenLabs voices',
+        ElevenLabsListVoicesResponse,
+        settings.baseUrl,
+        '/v1/voices',
+        {
+            headers: {
+                'xi-api-key': settings.apiKey,
+                Accept: 'application/json'
+            }
         }
-    })
-
-    if (!response.ok)
-        throw new Error('ElevenLabs voice API request failed')
-
-    let payload = await response.json() as Record<string, unknown>
-    let entries = Array.isArray(payload.voices) ? payload.voices : []
-    let voices = entries
+    )
+    let voices = response.voices
         .map(entry => mapElevenLabsVoice(entry))
         .filter((voice): voice is VoiceRecord => voice != null)
 
@@ -53,6 +58,31 @@ function mapElevenLabsVoice(value: unknown): VoiceRecord | null {
         name,
         description,
         gender
+    }
+}
+
+export async function streamElevenLabsSpeech(providerVoiceId: string, text: string, settings: TtsProviderSettings): Promise<{ stream: ReadableStream<Uint8Array>; mimeType: string }> {
+    let stream = await fetchStream(
+        'ElevenLabs speech stream',
+        settings.baseUrl,
+        `/v1/text-to-speech/${providerVoiceId}/stream?output_format=mp3_44100_128`,
+        {
+            method: 'POST',
+            headers: {
+                'xi-api-key': settings.apiKey,
+                'Content-Type': 'application/json',
+                Accept: 'audio/mpeg'
+            },
+            body: JSON.stringify({
+                text,
+                model_id: 'eleven_multilingual_v2'
+            })
+        }
+    )
+
+    return {
+        stream,
+        mimeType: 'audio/mpeg'
     }
 }
 
