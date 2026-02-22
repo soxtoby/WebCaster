@@ -1,11 +1,25 @@
-import { array, object, unknown } from "valibot"
+import { array, boolean, object, optional, picklist, string, type InferOutput } from "valibot"
 import { fetchJson, fetchStream } from "../http/request"
-import { type TtsProviderSettings, type VoiceRecord } from "../settings/settings-types"
-import { detectGenderFromName, normalizeReportedGender } from "./tts-utils"
+import { voiceGenders, type TtsProviderSettings, type VoiceRecord } from "../settings/settings-types"
+import { detectGenderFromName } from "./tts-utils"
 
-let ElevenLabsListVoicesResponse = object({
-    voices: array(unknown())
+let ElevenLabsVoiceSchema = object({
+    voice_id: string(),
+    name: optional(string()),
+    description: optional(string()),
+    labels: optional(object({
+        gender: optional(picklist(voiceGenders)),
+        description: optional(string())
+    }))
 })
+type ElevenLabsVoice = InferOutput<typeof ElevenLabsVoiceSchema>
+
+let ElevenLabsSearchVoicesResponseSchema = object({
+    voices: array(ElevenLabsVoiceSchema),
+    has_more: optional(boolean()),
+    next_page_token: optional(string())
+})
+type ElevenLabsSearchVoicesResponse = InferOutput<typeof ElevenLabsSearchVoicesResponseSchema>
 
 export let elevenLabsDefaults: TtsProviderSettings = {
     enabled: false,
@@ -14,42 +28,42 @@ export let elevenLabsDefaults: TtsProviderSettings = {
 }
 
 export async function listElevenLabsVoices(settings: TtsProviderSettings): Promise<VoiceRecord[]> {
-    let response = await fetchJson(
-        'ElevenLabs voices',
-        ElevenLabsListVoicesResponse,
-        settings.baseUrl,
-        '/v1/voices',
-        {
-            headers: {
-                'xi-api-key': settings.apiKey,
-                Accept: 'application/json'
-            }
-        }
-    )
-    let voices = response.voices
-        .map(entry => mapElevenLabsVoice(entry))
-        .filter((voice): voice is VoiceRecord => voice != null)
+    let voices: VoiceRecord[] = []
+    let nextPageToken: string | null = null
 
-    return voices
+    while (true) {
+        let response: ElevenLabsSearchVoicesResponse = await fetchJson(
+            'ElevenLabs voices',
+            ElevenLabsSearchVoicesResponseSchema,
+            settings.baseUrl,
+            buildElevenLabsSearchEndpoint(nextPageToken),
+            {
+                headers: {
+                    'xi-api-key': settings.apiKey,
+                    Accept: 'application/json'
+                }
+            }
+        )
+
+        voices.push(...response.voices.map((entry: ElevenLabsVoice) => mapElevenLabsVoice(entry)))
+
+        if (!response.has_more)
+            return voices
+
+        let token: string | undefined = response.next_page_token
+        if (!token)
+            return voices
+
+        nextPageToken = token
+    }
 }
 
-function mapElevenLabsVoice(value: unknown): VoiceRecord | null {
-    if (!value || typeof value != 'object')
-        return null
+function mapElevenLabsVoice(entry: ElevenLabsVoice): VoiceRecord {
+    let providerVoiceId = entry.voice_id
+    let name = entry.name || ''
+    let description = entry.description || entry.labels?.description || ''
 
-    let entry = value as Record<string, unknown>
-    let labels = entry.labels && typeof entry.labels == 'object' ? entry.labels as Record<string, unknown> : null
-    let providerVoiceId = getString(entry.voice_id)
-    if (!providerVoiceId)
-        return null
-
-    let name = getString(entry.name) || providerVoiceId
-    let description = getString(entry.description) || getString(labels?.description) || ''
-    let providedGender = getString(entry.gender) || getString(labels?.gender)
-    let gender = normalizeReportedGender(providedGender)
-
-    if (gender == 'unknown')
-        gender = detectGenderFromName(name)
+    let gender = entry.labels?.gender ?? detectGenderFromName(name)
 
     return {
         id: `elevenlabs:${providerVoiceId}`,
@@ -86,12 +100,13 @@ export async function streamElevenLabsSpeech(providerVoiceId: string, text: stri
     }
 }
 
-function getString(value: unknown) {
-    if (typeof value == 'string') {
-        let trimmed = value.trim()
-        if (trimmed)
-            return trimmed
-    }
+function buildElevenLabsSearchEndpoint(nextPageToken: string | null) {
+    let query = new URLSearchParams()
+    query.set('page_size', '100')
+    query.set('include_total_count', 'false')
 
-    return null
+    if (nextPageToken)
+        query.set('next_page_token', nextPageToken)
+
+    return `/v2/voices?${query.toString()}`
 }

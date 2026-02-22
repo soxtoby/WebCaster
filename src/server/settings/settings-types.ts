@@ -27,7 +27,9 @@ export const SettingsInput = object({
     })
 })
 
-export type VoiceGender = 'male' | 'female' | 'unknown'
+export type VoiceGender = (typeof voiceGenders)[number]
+export const voiceGenders = ['male', 'female', 'unknown'] as const
+
 export type VoiceRecord = {
     id: string
     provider: TtsProvider
