@@ -1,4 +1,3 @@
-import { Result } from "better-result"
 import { array, object, safeParse, string, type InferOutput } from "valibot"
 import { type TtsProviderSettings, type VoiceRecord } from "../settings/settings-types"
 import { buildUrl, detectGenderFromName } from "./tts-utils"
@@ -33,63 +32,54 @@ export let inworldDefaults: TtsProviderSettings = {
     baseUrl: 'https://api.inworld.ai'
 }
 
-export async function listInworldVoices(settings: TtsProviderSettings): Promise<Result<VoiceRecord[], string>> {
-    try {
-        let response = await fetch(buildUrl(settings.baseUrl, '/voices/v1/voices'), {
-            headers: {
-                Authorization: `Basic ${settings.apiKey.trim()}`,
-                Accept: 'application/json'
-            }
-        })
-
-        if (!response.ok)
-            return Result.err('Inworld voice API request failed')
-
-        let payload = await response.json()
-        let parsed = safeParse(InworldListVoicesResponse, payload)
-        if (!parsed.success) {
-            console.error('Inworld voice API response validation failed', parsed.issues)
-            return Result.err('Inworld voice API response was invalid')
+export async function listInworldVoices(settings: TtsProviderSettings): Promise<VoiceRecord[]> {
+    let response = await fetch(buildUrl(settings.baseUrl, '/voices/v1/voices'), {
+        headers: {
+            Authorization: `Basic ${settings.apiKey.trim()}`,
+            Accept: 'application/json'
         }
+    })
 
-        return Result.ok(parsed.output.voices
-            .map(entry => mapInworldVoice(entry)))
+    if (!response.ok)
+        throw new Error('Inworld voice API request failed')
+
+    let payload = await response.json()
+    let parsed = safeParse(InworldListVoicesResponse, payload)
+    if (!parsed.success) {
+        console.error('Inworld voice API response validation failed', parsed.issues)
+        throw new Error('Inworld voice API response was invalid')
     }
-    catch {
-        return Result.err('Inworld voice API request failed')
-    }
+
+    return parsed.output.voices
+        .map(entry => mapInworldVoice(entry))
 }
 
-export async function streamInworldSpeech(providerVoiceId: string, text: string, settings: TtsProviderSettings): Promise<Result<{ stream: ReadableStream<Uint8Array>; mimeType: string }, string>> {
-    try {
-        let endpoint = buildUrl(settings.baseUrl, '/tts/v1/voice:stream')
-        let response = await fetch(endpoint, {
-            method: 'POST',
-            headers: {
-                Authorization: `Basic ${settings.apiKey.trim()}`,
-                'Content-Type': 'application/json',
-                Accept: 'application/json'
+export async function streamInworldSpeech(providerVoiceId: string, text: string, settings: TtsProviderSettings): Promise<{ stream: ReadableStream<Uint8Array>; mimeType: string }> {
+    let endpoint = buildUrl(settings.baseUrl, '/tts/v1/voice:stream')
+    let response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+            Authorization: `Basic ${settings.apiKey.trim()}`,
+            'Content-Type': 'application/json',
+            Accept: 'application/json'
+        },
+        body: JSON.stringify({
+            text,
+            voiceId: providerVoiceId,
+            modelId: 'inworld-tts-1.5-max',
+            audioConfig: {
+                audioEncoding: 'MP3'
             },
-            body: JSON.stringify({
-                text,
-                voiceId: providerVoiceId,
-                modelId: 'inworld-tts-1.5-max',
-                audioConfig: {
-                    audioEncoding: 'MP3'
-                },
-                autoMode: true
-            })
+            autoMode: true
         })
+    })
 
-        if (!response.ok || !response.body)
-            return Result.err('inworld audio generation failed')
+    if (!response.ok || !response.body)
+        throw new Error('inworld audio generation failed')
 
-        return Result.ok({
-            stream: createInworldAudioStream(response.body),
-            mimeType: 'audio/mpeg'
-        })
-    } catch {
-        return Result.err('inworld audio generation failed')
+    return {
+        stream: createInworldAudioStream(response.body),
+        mimeType: 'audio/mpeg'
     }
 }
 
@@ -155,8 +145,7 @@ function createInworldAudioStream(source: ReadableStream<Uint8Array>) {
                 }
             }
             catch (error) {
-                let message = error instanceof Error ? error.message : 'inworld audio generation failed'
-                controller.error(new Error(message))
+                controller.error(error)
             }
         },
         cancel() {

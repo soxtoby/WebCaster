@@ -1,4 +1,3 @@
-import { Result } from "better-result"
 import type { TtsProviderSettings, VoiceRecord } from "../settings/settings-types"
 
 export let lemonFoxDefaults: TtsProviderSettings = {
@@ -7,8 +6,8 @@ export let lemonFoxDefaults: TtsProviderSettings = {
     baseUrl: 'https://api.lemonfox.ai/v1'
 }
 
-export async function listLemonFoxVoices(settings: TtsProviderSettings): Promise<Result<VoiceRecord[], string>> {
-    return Result.ok([
+export async function listLemonFoxVoices(settings: TtsProviderSettings): Promise<VoiceRecord[]> {
+    return [
         { name: 'Heart', providerVoiceId: 'heart', id: 'lemonfox:heart', description: "Clear, friendly, and professional female voice with a standard American accent.", gender: 'female', provider: 'lemonfox' },
         { name: 'Bella', providerVoiceId: 'bella', id: 'lemonfox:bella', description: "Clear, youthful female voice with a composed and melodic American accent.", gender: 'female', provider: 'lemonfox' },
         { name: 'Michael', providerVoiceId: 'michael', id: 'lemonfox:michael', description: "A steady, calm male voice frequently chosen for e-learning and instructional videos.", gender: 'male', provider: 'lemonfox' },
@@ -37,5 +36,5 @@ export async function listLemonFoxVoices(settings: TtsProviderSettings): Promise
         { name: 'Fable', providerVoiceId: 'fable', id: 'lemonfox:fable', description: "Friendly, clear, and slightly higher-pitched masculine voice with a standard British accent.", gender: 'male', provider: 'lemonfox' },
         { name: 'George', providerVoiceId: 'george', id: 'lemonfox:george', description: "Mature, warm, and sophisticated masculine voice with a standard British accent.", gender: 'male', provider: 'lemonfox' },
         { name: 'Lewis', providerVoiceId: 'lewis', id: 'lemonfox:lewis', description: "Crisp, professional, and mid-range masculine voice with a standard British accent.", gender: 'male', provider: 'lemonfox' },
-    ])
+    ]
 }

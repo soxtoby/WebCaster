@@ -1,4 +1,3 @@
-import { Result } from "better-result"
 import { type TtsProviderSettings, type VoiceRecord } from "../settings/settings-types"
 
 export let openAiDefaults: TtsProviderSettings = {
@@ -7,8 +6,8 @@ export let openAiDefaults: TtsProviderSettings = {
     baseUrl: 'https://api.openai.com/v1'
 }
 
-export async function listOpenAiVoices(settings: TtsProviderSettings): Promise<Result<VoiceRecord[], string>> {
-    return Result.ok([
+export async function listOpenAiVoices(settings: TtsProviderSettings): Promise<VoiceRecord[]> {
+    return [
         { name: 'Alloy', providerVoiceId: 'alloy', id: 'openai:alloy', description: "Neutral and balanced.", gender: 'unknown', provider: 'openai' },
         { name: 'Ash', providerVoiceId: 'ash', id: 'openai:ash', description: "Soft-spoken, calm, and gentle.", gender: 'male', provider: 'openai' },
         { name: 'Ballad', providerVoiceId: 'ballad', id: 'openai:ballad', description: "Melodic, warm, and storyteller-like.", gender: 'male', provider: 'openai' },
@@ -22,5 +21,5 @@ export async function listOpenAiVoices(settings: TtsProviderSettings): Promise<R
         { name: 'Verse', providerVoiceId: 'verse', id: 'openai:verse', description: "Poetic, rhythmic, and artistic.", gender: 'female', provider: 'openai' },
         { name: 'Marin', providerVoiceId: 'marin', id: 'openai:marin', description: "Natural, conversational, smooth and modern.", gender: 'female', provider: 'openai' },
         { name: 'Cedar', providerVoiceId: 'cedar', id: 'openai:cedar', description: "Calm, grounded, steady and reassuring.", gender: 'male', provider: 'openai' },
-    ])
+    ]
 }

@@ -1,9 +1,10 @@
 import { TRPCError } from "@trpc/server"
-import { Result } from "better-result"
 import { procedure } from "../trpc/trpc"
 import { listFeedEpisodes } from "./feed-podcast"
 import { FeedIdInput, FeedInput, FeedUpdateInput } from "./feed-types"
 import { createFeed as createFeedRecord, deleteFeedById as deleteFeedRecordById, getFeedById as getFeedRecordById, listFeeds as listFeedRecords, updateFeedById as updateFeedRecordById } from "./feed-repository"
+
+type EnrichedFeedInput = FeedInput & { description?: string | null; imageUrl?: string | null }
 
 export const list = procedure
     .query(() => ({ feeds: listFeedRecords() }));
@@ -11,22 +12,29 @@ export const list = procedure
 export const create = procedure
     .input(FeedInput)
     .mutation(async ({ input }) => {
-        let enriched = await withFeedMetadata(input)
+        let enriched: EnrichedFeedInput
+        try {
+            enriched = await withFeedMetadata(input)
+        } catch (error) {
+            let message = error instanceof Error ? error.message : 'Feed metadata enrichment failed'
+            throw new TRPCError({ code: 'BAD_REQUEST', message })
+        }
 
-        if (enriched.isErr())
-            throw new TRPCError({ code: 'BAD_REQUEST', message: enriched.error })
-
-        return { feed: createFeedRecord(enriched.value) }
+        return { feed: createFeedRecord(enriched) }
     })
 
 export const update = procedure
     .input(FeedUpdateInput)
     .mutation(async ({ input }) => {
-        let enriched = await withFeedMetadata(input)
-        if (enriched.isErr())
-            throw new TRPCError({ code: 'BAD_REQUEST', message: enriched.error })
+        let enriched: EnrichedFeedInput
+        try {
+            enriched = await withFeedMetadata(input)
+        } catch (error) {
+            let message = error instanceof Error ? error.message : 'Feed metadata enrichment failed'
+            throw new TRPCError({ code: 'BAD_REQUEST', message })
+        }
 
-        let feed = updateFeedRecordById(input.id, enriched.value)
+        let feed = updateFeedRecordById(input.id, enriched)
         if (feed)
             return { feed }
 
@@ -56,37 +64,37 @@ export const episodes = procedure
         }
     })
 
-async function withFeedMetadata(input: FeedInput): Promise<Result<FeedInput, string>> {
+async function withFeedMetadata(input: FeedInput): Promise<EnrichedFeedInput> {
     let metadata = await fetchFeedMetadata(input.rssUrl)
 
-    if (metadata.isErr()) {
+    if (!metadata) {
         if (!input.name) {
             let fallbackName = buildFallbackFeedName(input.rssUrl)
             if (!fallbackName)
-                return Result.err('Feed name is required and could not be inferred from source feed')
+                throw new Error('Feed name is required and could not be inferred from source feed')
 
-            return Result.ok({
+            return {
                 ...input,
                 name: fallbackName
-            })
+            }
         }
-        return Result.ok(input)
+        return input
     }
 
-    let name = input.name || metadata.value.title
+    let name = input.name || metadata.title
     if (!name) {
         let fallbackName = buildFallbackFeedName(input.rssUrl)
         if (!fallbackName)
-            return Result.err('Feed name is required and could not be inferred from source feed')
+            throw new Error('Feed name is required and could not be inferred from source feed')
         name = fallbackName
     }
 
-    return Result.ok({
+    return {
         ...input,
         name,
-        description: metadata.value.description,
-        imageUrl: metadata.value.imageUrl
-    })
+        description: metadata.description,
+        imageUrl: metadata.imageUrl
+    }
 }
 
 type FeedMetadata = {
@@ -95,7 +103,7 @@ type FeedMetadata = {
     imageUrl: string | null
 }
 
-async function fetchFeedMetadata(rssUrl: string): Promise<Result<FeedMetadata, string>> {
+async function fetchFeedMetadata(rssUrl: string): Promise<FeedMetadata | null> {
     try {
         let response = await fetch(rssUrl, {
             headers: {
@@ -104,17 +112,17 @@ async function fetchFeedMetadata(rssUrl: string): Promise<Result<FeedMetadata, s
         })
 
         if (!response.ok)
-            return Result.err('Could not fetch feed metadata')
+            return null
 
         let xml = await response.text()
         let title = extractFeedTitle(xml)
         let imageUrl = extractFeedImage(xml)
         let description = extractFeedDescription(xml)
 
-        return Result.ok({ title, imageUrl, description })
+        return { title, imageUrl, description }
     }
     catch {
-        return Result.err('Could not fetch feed metadata')
+        return null
     }
 }
 

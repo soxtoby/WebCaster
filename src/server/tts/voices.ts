@@ -10,12 +10,12 @@ export const list = procedure
 
         for (let providerType of ttsProviders) {
             let providerSettings = settings[providerType]
-            let result = await listVoices(providerType, providerSettings)
-
-            if (result.isOk()) {
-                replaceProviderVoices(providerType, result.value)
-                merged.push(...result.value)
-            } else {
+            try {
+                let voices = await listVoices(providerType, providerSettings)
+                replaceProviderVoices(providerType, voices)
+                merged.push(...voices)
+            }
+            catch {
                 let cachedRows = listCachedVoicesByProvider(providerType)
                 let cachedVoices: VoiceRecord[] = cachedRows.map(row => {
                     let gender: VoiceRecord['gender'] = row.gender == 'male' || row.gender == 'female' ? row.gender : 'unknown'

@@ -1,4 +1,3 @@
-import { Result } from "better-result"
 import { type TtsProviderSettings, type VoiceRecord } from "../settings/settings-types"
 import { buildUrl, detectGenderFromName, normalizeReportedGender } from "./tts-utils"
 
@@ -8,30 +7,25 @@ export let elevenLabsDefaults: TtsProviderSettings = {
     baseUrl: 'https://api.elevenlabs.io'
 }
 
-export async function listElevenLabsVoices(settings: TtsProviderSettings): Promise<Result<VoiceRecord[], string>> {
+export async function listElevenLabsVoices(settings: TtsProviderSettings): Promise<VoiceRecord[]> {
     let endpoint = buildUrl(settings.baseUrl, '/v1/voices')
-    try {
-        let response = await fetch(endpoint, {
-            headers: {
-                'xi-api-key': settings.apiKey,
-                Accept: 'application/json'
-            }
-        })
+    let response = await fetch(endpoint, {
+        headers: {
+            'xi-api-key': settings.apiKey,
+            Accept: 'application/json'
+        }
+    })
 
-        if (!response.ok)
-            return Result.err('ElevenLabs voice API request failed')
+    if (!response.ok)
+        throw new Error('ElevenLabs voice API request failed')
 
-        let payload = await response.json() as Record<string, unknown>
-        let entries = Array.isArray(payload.voices) ? payload.voices : []
-        let voices = entries
-            .map(entry => mapElevenLabsVoice(entry))
-            .filter((voice): voice is VoiceRecord => voice != null)
+    let payload = await response.json() as Record<string, unknown>
+    let entries = Array.isArray(payload.voices) ? payload.voices : []
+    let voices = entries
+        .map(entry => mapElevenLabsVoice(entry))
+        .filter((voice): voice is VoiceRecord => voice != null)
 
-        return Result.ok(voices)
-    }
-    catch {
-        return Result.err('ElevenLabs voice API request failed')
-    }
+    return voices
 }
 
 function mapElevenLabsVoice(value: unknown): VoiceRecord | null {

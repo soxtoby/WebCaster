@@ -1,5 +1,4 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm"
-import { Result } from "better-result"
 import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 import { database } from "../db"
@@ -7,7 +6,7 @@ import { appDataDirectory } from "../db/location"
 import { articlesTable, feedsTable, type Article, type Feed } from "../db/schema"
 import { getCachedVoiceById, listProviderSettings } from "../settings/settings-repository"
 import { type TtsProvider } from "../settings/settings-types"
-import { streamSpeech } from "../tts/tts"
+import { streamSpeech, type StreamedAudio } from "../tts/tts"
 
 type ParsedFeedArticle = {
     sourceUrl: string
@@ -115,19 +114,22 @@ export async function streamEpisodeAudio(feed: Feed, articleId: number, serverBa
             return new Response(existing, { headers: { 'content-type': 'audio/mpeg' } })
     }
 
-    let generated = await createAudioStream(feed, article)
-    if (generated.isErr()) {
-        markArticleFailed(article.id, generated.error)
-        return new Response(generated.error, { status: 400 })
+    let generated: StreamedAudio
+    try {
+        generated = await createAudioStream(feed, article)
+    } catch (error) {
+        let message = error instanceof Error ? error.message : 'Audio generation failed'
+        markArticleFailed(article.id, message)
+        return new Response(message, { status: 400 })
     }
 
     markArticleGenerating(article.id, feed)
-    let [toClient, toDisk] = generated.value.stream.tee()
+    let [toClient, toDisk] = generated.stream.tee()
     void persistAudioStream(toDisk, resolvedPath, article.id, feed, serverBaseUrl)
 
     return new Response(toClient, {
         headers: {
-            'content-type': generated.value.mimeType,
+            'content-type': generated.mimeType,
             'cache-control': 'no-store'
         }
     })
@@ -140,11 +142,14 @@ async function syncAllFeeds(serverBaseUrl: string, limit: number) {
 }
 
 async function syncFeed(feed: Feed, serverBaseUrl: string, limit: number) {
-    let itemsResult = await fetchFeedArticles(feed.rssUrl)
-    if (itemsResult.isErr())
+    let items: ParsedFeedArticle[]
+    try {
+        items = await fetchFeedArticles(feed.rssUrl)
+    } catch {
         return
+    }
 
-    let items = itemsResult.value.slice(0, limit)
+    items = items.slice(0, limit)
     for (let item of items) {
         database
             .insert(articlesTable)
@@ -193,26 +198,26 @@ async function generateAndStoreAudio(feed: Feed, article: Article, serverBaseUrl
         return
 
     markArticleGenerating(article.id, feed)
-    let generated = await createAudioStream(feed, article)
-    if (generated.isErr()) {
-        markArticleFailed(article.id, generated.error)
-        return
+    try {
+        let generated = await createAudioStream(feed, article)
+        await persistAudioStream(generated.stream, resolvedPath, article.id, feed, serverBaseUrl)
+    } catch (error) {
+        let message = error instanceof Error ? error.message : 'Audio generation failed'
+        markArticleFailed(article.id, message)
     }
-
-    await persistAudioStream(generated.value.stream, resolvedPath, article.id, feed, serverBaseUrl)
 }
 
-async function createAudioStream(feed: Feed, article: Article) {
+async function createAudioStream(feed: Feed, article: Article): Promise<StreamedAudio> {
     let text = await resolveArticleText(feed, article)
     if (!text.trim())
-        return Result.err('Article text is empty')
+        throw new Error('Article text is empty')
 
     let voice = getCachedVoiceById(feed.voice)
     if (!voice)
-        return Result.err('Selected voice was not found in voice cache')
+        throw new Error('Selected voice was not found in voice cache')
 
     if (!isTtsProvider(voice.provider))
-        return Result.err('Selected voice provider is invalid')
+        throw new Error('Selected voice provider is invalid')
 
     let settings = listProviderSettings()
     return await streamSpeech(voice.provider, voice.providerVoiceId, text, settings)
@@ -352,23 +357,18 @@ function extractReadableText(html: string) {
     return text
 }
 
-async function fetchFeedArticles(rssUrl: string) {
-    try {
-        let response = await fetch(rssUrl, {
-            headers: {
-                Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.5'
-            }
-        })
+async function fetchFeedArticles(rssUrl: string): Promise<ParsedFeedArticle[]> {
+    let response = await fetch(rssUrl, {
+        headers: {
+            Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.5'
+        }
+    })
 
-        if (!response.ok)
-            return Result.err('Feed fetch failed')
+    if (!response.ok)
+        throw new Error('Feed fetch failed')
 
-        let xml = await response.text()
-        return Result.ok(parseFeedArticles(xml))
-    }
-    catch {
-        return Result.err('Feed fetch failed')
-    }
+    let xml = await response.text()
+    return parseFeedArticles(xml)
 }
 
 function parseFeedArticles(xml: string): ParsedFeedArticle[] {

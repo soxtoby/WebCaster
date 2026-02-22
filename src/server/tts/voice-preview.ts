@@ -1,4 +1,3 @@
-import { Result } from "better-result"
 import { createHash } from "node:crypto"
 import { mkdirSync, renameSync } from "node:fs"
 import { join } from "node:path"
@@ -8,7 +7,7 @@ import { type TtsProvider } from "../settings/settings-types"
 import { streamSpeech } from "./tts"
 
 let previewText = 'Hello, this is a preview of my voice. I hope you like how I sound!'
-let pendingPreviewGenerations = new Map<string, Promise<Result<string, string>>>()
+let pendingPreviewGenerations = new Map<string, Promise<string>>()
 
 export async function streamVoicePreviewAudio(voiceId: string): Promise<Response> {
     let resolvedVoiceId = voiceId.trim()
@@ -29,11 +28,15 @@ export async function streamVoicePreviewAudio(voiceId: string): Promise<Response
         return createAudioResponse(cachedFile)
 
     let settings = listProviderSettings()
-    let generated = await ensurePreviewFile(previewKey, outputPath, voice.provider, voice.providerVoiceId, settings)
-    if (generated.isErr())
-        return new Response(generated.error, { status: 400 })
+    try {
+        let generated = await ensurePreviewFile(previewKey, outputPath, voice.provider, voice.providerVoiceId, settings)
+        return createAudioResponse(Bun.file(generated))
+    }
+    catch (error) {
+        let message = error instanceof Error ? error.message : 'Voice preview generation failed'
+        return new Response(message, { status: 400 })
+    }
 
-    return createAudioResponse(Bun.file(generated.value))
 }
 
 async function ensurePreviewFile(previewKey: string, outputPath: string, provider: TtsProvider, providerVoiceId: string, settings: ReturnType<typeof listProviderSettings>) {
@@ -51,22 +54,15 @@ async function ensurePreviewFile(previewKey: string, outputPath: string, provide
     }
 }
 
-async function generatePreviewFile(outputPath: string, provider: TtsProvider, providerVoiceId: string, settings: ReturnType<typeof listProviderSettings>): Promise<Result<string, string>> {
+async function generatePreviewFile(outputPath: string, provider: TtsProvider, providerVoiceId: string, settings: ReturnType<typeof listProviderSettings>): Promise<string> {
     mkdirSync(join(appDataDirectory, 'voice-previews'), { recursive: true })
 
     let generated = await streamSpeech(provider, providerVoiceId, previewText, settings)
-    if (generated.isErr())
-        return Result.err(generated.error)
-
     let tempPath = `${outputPath}.${Date.now()}.tmp`
 
-    try {
-        await writeStreamToFile(generated.value.stream, tempPath)
-        renameSync(tempPath, outputPath)
-        return Result.ok(outputPath)
-    } catch {
-        return Result.err('Failed to store voice preview')
-    }
+    await writeStreamToFile(generated.stream, tempPath)
+    renameSync(tempPath, outputPath)
+    return outputPath
 }
 
 async function writeStreamToFile(stream: ReadableStream<Uint8Array>, outputPath: string) {
