@@ -59,7 +59,7 @@ export const episodes = procedure
             throw new TRPCError({ code: 'NOT_FOUND', message: 'Feed not found' })
 
         return {
-            podcastUrl: `/podcast/${feed.podcastSlug}.xml`,
+            podcastUrl: `/feed/${feed.podcastSlug}`,
             episodes: listFeedEpisodes(feed.id)
         }
     })

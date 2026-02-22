@@ -298,7 +298,7 @@ export function FeedManagerPage() {
             let podcastSlug = parsePodcastSlug(response.podcastUrl)
             let enrichedEpisodes = response.episodes.map(episode => ({
                 ...episode,
-                audioUrl: `${window.location.origin}/audio/${podcastSlug}/${episode.id}.mp3`
+                audioUrl: `${window.location.origin}/feed/${podcastSlug}/${episode.id}`
             }))
             setEpisodes(enrichedEpisodes)
         }
@@ -415,7 +415,7 @@ function getFallbackVoiceId(voiceOptions: VoiceOption[]) {
 }
 
 function parsePodcastSlug(podcastUrl: string) {
-    let match = podcastUrl.match(/^\/podcast\/(.+?)\.xml$/)
+    let match = podcastUrl.match(/^\/feed\/(.+?)$/)
     if (match?.[1])
         return match[1]
 

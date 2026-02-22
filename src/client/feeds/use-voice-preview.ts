@@ -104,5 +104,5 @@ export function useVoicePreview() {
 }
 
 function buildVoicePreviewUrl(voiceId: string) {
-    return `/audio/preview/${encodeURIComponent(voiceId)}`
+    return `/preview/${encodeURIComponent(voiceId)}`
 }

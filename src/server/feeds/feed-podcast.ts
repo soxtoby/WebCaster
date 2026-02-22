@@ -501,5 +501,5 @@ function resolveAudioPath(podcastSlug: string, articleId: number) {
 }
 
 function buildAudioUrl(feed: Feed, articleId: number, serverBaseUrl: string) {
-    return `${serverBaseUrl.replace(/\/+$/, '')}/audio/${feed.podcastSlug}/${articleId}.mp3`
+    return `${serverBaseUrl.replace(/\/+$/, '')}/feed/${feed.podcastSlug}/${articleId}`
 }

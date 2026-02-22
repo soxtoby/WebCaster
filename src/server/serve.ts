@@ -11,7 +11,7 @@ let server = serve({
     port: 3000,
     routes: {
         '/': index,
-        '/podcast/:slug': async (request) => {
+        '/feed/:slug': async (request) => {
             let slug = request.params.slug.replace(/\.xml$/, '')
             let feed = await getFeedByPodcastSlug(slug)
             if (!feed)
@@ -25,10 +25,10 @@ let server = serve({
                 }
             })
         },
-        '/audio/preview/:voiceId': async (request) => {
+        '/preview/:voiceId': async (request) => {
             return await streamVoicePreviewAudio(request.params.voiceId)
         },
-        '/audio/:slug/:episodeId': async (request) => {
+        '/feed/:slug/:episodeId': async (request) => {
             let slug = request.params.slug
             let episodeIdRaw = request.params.episodeId.replace(/\.mp3$/, '')
             let episodeId = Number(episodeIdRaw)
