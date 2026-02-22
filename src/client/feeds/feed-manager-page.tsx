@@ -23,6 +23,7 @@ type FeedEpisode = {
     status: string
     errorMessage: string | null
     audioReady: boolean
+    audioUrl: string
 }
 
 export function FeedManagerPage() {
@@ -33,6 +34,8 @@ export function FeedManagerPage() {
     let [status, setStatus] = useState('')
     let [podcastUrl, setPodcastUrl] = useState('')
     let [episodes, setEpisodes] = useState<FeedEpisode[]>([])
+    let [activeEpisodeId, setActiveEpisodeId] = useState<number | null>(null)
+    let [activeEpisodeAudioUrl, setActiveEpisodeAudioUrl] = useState('')
 
     let [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>([])
     let [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -91,6 +94,9 @@ export function FeedManagerPage() {
     }, [selectedFeed, voiceOptions])
 
     useEffect(() => {
+        setActiveEpisodeId(null)
+        setActiveEpisodeAudioUrl('')
+
         if (selectedFeedId != null)
             void loadEpisodes(selectedFeedId)
         else {
@@ -176,6 +182,8 @@ export function FeedManagerPage() {
 
             {selectedFeed || isCreating
                 ? <FeedDetailsSection
+                    activeEpisodeAudioUrl={activeEpisodeAudioUrl}
+                    activeEpisodeId={activeEpisodeId}
                     draft={draft}
                     error={error}
                     isEditing={selectedFeed != null}
@@ -191,6 +199,10 @@ export function FeedManagerPage() {
                     onDelete={() => removeFeed()}
                     onDraftChange={(field, value) => {
                         setDraft(current => ({ ...current, [field]: value }))
+                    }}
+                    onPlayEpisode={episode => {
+                        setActiveEpisodeId(episode.id)
+                        setActiveEpisodeAudioUrl(episode.audioUrl)
                     }}
                     onSubmit={() => {
                         void saveFeed()
@@ -282,8 +294,13 @@ export function FeedManagerPage() {
     async function loadEpisodes(feedId: number) {
         try {
             let response = await api.feeds.episodes.query({ id: feedId })
-            setEpisodes(response.episodes)
             setPodcastUrl(`${window.location.origin}${response.podcastUrl}`)
+            let podcastSlug = parsePodcastSlug(response.podcastUrl)
+            let enrichedEpisodes = response.episodes.map(episode => ({
+                ...episode,
+                audioUrl: `${window.location.origin}/audio/${podcastSlug}/${episode.id}.mp3`
+            }))
+            setEpisodes(enrichedEpisodes)
         }
         catch {
             setEpisodes([])
@@ -393,6 +410,14 @@ function getFallbackVoiceId(voiceOptions: VoiceOption[]) {
     let firstVoice = voiceOptions.at(0)
     if (firstVoice)
         return firstVoice.id
+
+    return ''
+}
+
+function parsePodcastSlug(podcastUrl: string) {
+    let match = podcastUrl.match(/^\/podcast\/(.+?)\.xml$/)
+    if (match?.[1])
+        return match[1]
 
     return ''
 }

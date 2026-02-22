@@ -29,8 +29,8 @@ let server = serve({
             return await streamVoicePreviewAudio(request.params.voiceId)
         },
         '/audio/:slug/:episodeId': async (request) => {
-            let slug = request.params.slug.replace(/\.xml$/, '')
-            let episodeIdRaw = request.params.episodeId || ''
+            let slug = request.params.slug
+            let episodeIdRaw = request.params.episodeId.replace(/\.mp3$/, '')
             let episodeId = Number(episodeIdRaw)
             if (!Number.isInteger(episodeId) || episodeId <= 0)
                 return new Response('Episode not found', { status: 404 })

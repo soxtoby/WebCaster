@@ -18,9 +18,12 @@ type Episode = {
     status: string
     errorMessage: string | null
     audioReady: boolean
+    audioUrl: string
 }
 
 export function FeedDetailsSection(props: {
+    activeEpisodeAudioUrl: string
+    activeEpisodeId: number | null
     draft: FeedDraft
     episodes: Episode[]
     error: string
@@ -29,6 +32,7 @@ export function FeedDetailsSection(props: {
     onCancel: () => void
     onDelete: () => void
     onDraftChange: (field: keyof FeedDraft, value: string) => void
+    onPlayEpisode: (episode: Episode) => void
     onSubmit: () => void
     status: string
     voiceOptions: VoiceOption[]
@@ -113,11 +117,34 @@ export function FeedDetailsSection(props: {
                 <h3 className={classes(episodesHeadingStyle)}>Episodes</h3>
                 {props.episodes.length == 0
                     ? <p className={classes(statusStyle)}>No episodes discovered yet.</p>
-                    : <div className={classes(episodeListStyle)}>{props.episodes.map(episode => <article className={classes(episodeCardStyle)} key={episode.id}>
-                        <p className={classes(episodeTitleStyle)}>{episode.title}</p>
-                        <p className={classes(episodeMetaStyle)}>{episode.status}{episode.audioReady ? ' · audio ready' : ''}</p>
-                        {episode.errorMessage ? <p className={classes(errorStyle)}>{episode.errorMessage}</p> : null}
-                    </article>)}</div>}
+                    : <div className={classes(episodeListStyle)}>{props.episodes.map(episode => {
+                        let isPlayingEpisode = props.activeEpisodeId == episode.id
+
+                        return <article className={classes(episodeCardStyle)} key={episode.id}>
+                            <div className={classes(episodeTopRowStyle)}>
+                                <p className={classes(episodeTitleStyle)}>{episode.title}</p>
+                                <button
+                                    aria-label="Play episode"
+                                    className={classes(episodePlayButtonStyle)}
+                                    onClick={() => props.onPlayEpisode(episode)}
+                                    type="button"
+                                >
+                                    ▶
+                                </button>
+                            </div>
+                            <p className={classes(episodeMetaStyle)}>{episode.status}{episode.audioReady ? ' · audio ready' : ''}</p>
+                            {isPlayingEpisode && props.activeEpisodeAudioUrl
+                                ? <audio
+                                    autoPlay
+                                    className={classes(episodeAudioStyle)}
+                                    controls
+                                    preload="none"
+                                    src={props.activeEpisodeAudioUrl}
+                                />
+                                : null}
+                            {episode.errorMessage ? <p className={classes(errorStyle)}>{episode.errorMessage}</p> : null}
+                        </article>
+                    })}</div>}
             </div>
             : null}
     </section>
@@ -268,8 +295,32 @@ let episodeTitleStyle = style('detailsEpisodeTitle', {
     fontSize: 14
 })
 
+let episodeTopRowStyle = style('detailsEpisodeTopRow', {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8
+})
+
+let episodePlayButtonStyle = style('detailsEpisodePlayButton', {
+    marginLeft: 'auto',
+    border: '1px solid var(--border)',
+    borderRadius: 8,
+    width: 34,
+    height: 34,
+    backgroundColor: 'transparent',
+    color: 'inherit',
+    cursor: 'pointer',
+    flexShrink: 0,
+    lineHeight: 1
+})
+
 let episodeMetaStyle = style('detailsEpisodeMeta', {
     margin: 0,
     fontSize: 12,
     color: 'var(--muted)'
+})
+
+let episodeAudioStyle = style('detailsEpisodeAudio', {
+    marginTop: 8,
+    width: '100%'
 })
