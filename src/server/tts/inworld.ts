@@ -52,6 +52,37 @@ export async function listInworldVoices(settings: TtsProviderSettings): Promise<
 }
 
 export async function streamInworldSpeech(providerVoiceId: string, text: string, settings: TtsProviderSettings): Promise<{ stream: ReadableStream<Uint8Array>; mimeType: string }> {
+    let chunks = splitTextIntoChunks(text)
+
+    let stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+            try {
+                for (let chunk of chunks) {
+                    let chunkStream = await fetchInworldChunkStream(providerVoiceId, chunk, settings)
+                    let reader = chunkStream.getReader()
+                    try {
+                        while (true) {
+                            let { done, value } = await reader.read()
+                            if (done)
+                                break
+                            if (value)
+                                controller.enqueue(value)
+                        }
+                    } finally {
+                        reader.releaseLock()
+                    }
+                }
+                controller.close()
+            } catch (error) {
+                controller.error(error)
+            }
+        }
+    })
+
+    return { stream, mimeType: 'audio/mpeg' }
+}
+
+async function fetchInworldChunkStream(providerVoiceId: string, text: string, settings: TtsProviderSettings): Promise<ReadableStream<Uint8Array>> {
     let response = await fetchResponse(
         'Inworld speech stream',
         settings.baseUrl,
@@ -78,10 +109,46 @@ export async function streamInworldSpeech(providerVoiceId: string, text: string,
     if (!response.body)
         throw new Error('inworld audio generation failed')
 
-    return {
-        stream: createInworldAudioStream(response.body),
-        mimeType: 'audio/mpeg'
+    return createInworldAudioStream(response.body)
+}
+
+function splitTextIntoChunks(text: string, maxLength: number = 2000): string[] {
+    if (text.length <= maxLength)
+        return [text]
+
+    let chunks: string[] = []
+    let remaining = text
+
+    while (remaining.length > maxLength) {
+        let window = remaining.slice(0, maxLength)
+        let splitAt: number
+
+        let paraIdx = window.lastIndexOf('\n\n')
+        if (paraIdx > 0) {
+            splitAt = paraIdx + 2
+        } else {
+            let newlineIdx = window.lastIndexOf('\n')
+            if (newlineIdx > 0) {
+                splitAt = newlineIdx + 1
+            } else {
+                let lastSentenceBreak = Array.from(window.matchAll(/[.!?]\s+/g)).at(-1)
+                if (lastSentenceBreak) {
+                    splitAt = lastSentenceBreak.index + lastSentenceBreak[0].length
+                } else {
+                    let wordIdx = window.lastIndexOf(' ')
+                    splitAt = wordIdx > 0 ? wordIdx + 1 : maxLength
+                }
+            }
+        }
+
+        chunks.push(remaining.slice(0, splitAt).trim())
+        remaining = remaining.slice(splitAt).trimStart()
     }
+
+    if (remaining.trim())
+        chunks.push(remaining.trim())
+
+    return chunks
 }
 
 function mapInworldVoice(entry: InworldVoice): VoiceRecord {
