@@ -57,6 +57,13 @@
       "when": 1771722000000,
       "tag": "0007_mighty_voice_fk",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1771785600000,
+      "tag": "0008_remove_feed_language",
+      "breakpoints": true
     }
   ]
 }

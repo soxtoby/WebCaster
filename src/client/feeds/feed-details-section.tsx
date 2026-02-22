@@ -6,7 +6,6 @@ type FeedDraft = {
     name: string
     rssUrl: string
     voice: string
-    language: string
     generationMode: string
     contentSource: string
 }
@@ -26,7 +25,6 @@ export function FeedDetailsSection(props: {
     episodes: Episode[]
     error: string
     isEditing: boolean
-    languageOptions: string[]
     podcastUrl: string
     onCancel: () => void
     onDelete: () => void
@@ -61,12 +59,6 @@ export function FeedDetailsSection(props: {
                 value={props.draft.voice}
                 options={props.voiceOptions}
                 onChange={value => props.onDraftChange('voice', value)}
-            />
-            <TextSelectField
-                label="Language"
-                value={props.draft.language}
-                options={props.languageOptions}
-                onChange={value => props.onDraftChange('language', value)}
             />
             <TextSelectField
                 label="Generation mode"

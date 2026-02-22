@@ -30,7 +30,6 @@ export const feedsTable = sqliteTable('feeds', {
     description: text('description'),
     imageUrl: text('image_url'),
     voice: text('voice').notNull().references(() => ttsVoicesTable.id),
-    language: text('language').notNull(),
     generationMode: text('generation_mode').notNull().default('on_demand'),
     contentSource: text('content_source').notNull().default('feed_article'),
     podcastSlug: text('podcast_slug').notNull(),

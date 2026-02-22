@@ -31,7 +31,6 @@ export function createFeed(input: FeedInput & { description?: string | null; ima
             description: input.description ?? null,
             imageUrl: input.imageUrl ?? null,
             voice: input.voice,
-            language: input.language,
             generationMode: input.generationMode,
             contentSource: input.contentSource,
             podcastSlug
@@ -54,7 +53,6 @@ export function updateFeedById(id: number, input: FeedInput & { description?: st
             description: input.description ?? null,
             imageUrl: input.imageUrl ?? null,
             voice: input.voice,
-            language: input.language,
             generationMode: input.generationMode,
             contentSource: input.contentSource,
             updatedAt: sql`CURRENT_TIMESTAMP`

@@ -11,7 +11,6 @@ type FeedDraft = {
     name: string
     rssUrl: string
     voice: string
-    language: string
     generationMode: string
     contentSource: string
 }
@@ -26,12 +25,10 @@ type FeedEpisode = {
     audioReady: boolean
 }
 
-let languageOptions = ['en']
-
 export function FeedManagerPage() {
     let [selectedFeedId, setSelectedFeedId] = useState<number | null>(null)
     let [isCreating, setIsCreating] = useState(false)
-    let [draft, setDraft] = useState<FeedDraft>({ name: '', rssUrl: '', voice: '', language: 'en', generationMode: 'on_demand', contentSource: 'feed_article' })
+    let [draft, setDraft] = useState<FeedDraft>({ name: '', rssUrl: '', voice: '', generationMode: 'on_demand', contentSource: 'feed_article' })
     let [error, setError] = useState('')
     let [status, setStatus] = useState('')
     let [podcastUrl, setPodcastUrl] = useState('')
@@ -85,12 +82,11 @@ export function FeedManagerPage() {
                 name: selectedFeed.name,
                 rssUrl: selectedFeed.rssUrl,
                 voice: selectedFeed.voice,
-                language: selectedFeed.language,
                 generationMode: selectedFeed.generationMode,
                 contentSource: selectedFeed.contentSource
             })
         } else {
-            setDraft({ name: '', rssUrl: '', voice: getFallbackVoiceId(voiceOptions), language: 'en', generationMode: 'on_demand', contentSource: 'feed_article' })
+            setDraft({ name: '', rssUrl: '', voice: getFallbackVoiceId(voiceOptions), generationMode: 'on_demand', contentSource: 'feed_article' })
         }
     }, [selectedFeed, voiceOptions])
 
@@ -168,7 +164,7 @@ export function FeedManagerPage() {
                                 setIsCreating(true)
                                 setStatus('')
                                 setError('')
-                                setDraft({ name: '', rssUrl: '', voice: getFallbackVoiceId(resolvedVoiceOptions), language: 'en', generationMode: 'on_demand', contentSource: 'feed_article' })
+                                setDraft({ name: '', rssUrl: '', voice: getFallbackVoiceId(resolvedVoiceOptions), generationMode: 'on_demand', contentSource: 'feed_article' })
                             }}
                             type="button"
                         >
@@ -183,13 +179,12 @@ export function FeedManagerPage() {
                     draft={draft}
                     error={error}
                     isEditing={selectedFeed != null}
-                    languageOptions={languageOptions}
                     podcastUrl={podcastUrl}
                     episodes={episodes}
                     onCancel={() => {
                         setSelectedFeedId(null)
                         setIsCreating(false)
-                        setDraft({ name: '', rssUrl: '', voice: getFallbackVoiceId(resolvedVoiceOptions), language: 'en', generationMode: 'on_demand', contentSource: 'feed_article' })
+                        setDraft({ name: '', rssUrl: '', voice: getFallbackVoiceId(resolvedVoiceOptions), generationMode: 'on_demand', contentSource: 'feed_article' })
                         setStatus('')
                         setError('')
                     }}
@@ -247,7 +242,6 @@ export function FeedManagerPage() {
                 f.name = draft.name.trim()
                 f.rssUrl = draft.rssUrl.trim()
                 f.voice = draft.voice
-                f.language = draft.language
                 f.generationMode = draft.generationMode
                 f.contentSource = draft.contentSource
                 f.updatedAt = new Date().toISOString()
