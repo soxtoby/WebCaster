@@ -4,38 +4,42 @@ import embeddedIcon from "./icon.ico" with { type: "file" }
 import { file } from "bun"
 import { iconPath } from "./paths"
 
+let notifyIcon: NotifyIcon | null = null
+let pendingUpdate: { version: string; restart: () => void } | null = null
+
 export async function setupNotificationIcon(serverUrl: string) {
     if (process.platform == 'win32') {
-        let menu = new Menu([
-            {
-                id: 1,
-                text: "Open in browser"
-            },
-            {
-                separator: true
-            },
-            {
-                id: 2,
-                text: "Quit"
-            }
-        ])
-
         let iconFile = file(iconPath)
         if (!await iconFile.exists())
             await iconFile.write(file(embeddedIcon))
 
-        let notifyIcon = new NotifyIcon({
+        notifyIcon = new NotifyIcon({
             icon: Icon.load(iconPath, Icon.small),
             tooltip: "WebCaster",
             async onSelect(event) {
                 if (event.rightButton) {
-                    let selectedId = await menu.show(event.mouseX, event.mouseY)
+                    let items: Menu.ItemInput[] = [
+                        { id: 1, text: "Open in browser" },
+                        { separator: true }
+                    ]
+
+                    if (pendingUpdate) {
+                        items.push({ id: 3, text: `Restart to update (v${pendingUpdate.version})` })
+                        items.push({ separator: true })
+                    }
+
+                    items.push({ id: 2, text: "Quit" })
+
+                    let selectedId = await new Menu(items).show(event.mouseX, event.mouseY)
 
                     if (selectedId == 1)
                         open(serverUrl)
 
                     if (selectedId == 2)
                         quitApp()
+
+                    if (selectedId == 3 && pendingUpdate)
+                        pendingUpdate.restart()
                 } else {
                     open(serverUrl)
                 }
@@ -52,7 +56,18 @@ export async function setupNotificationIcon(serverUrl: string) {
         }
 
         function cleanup() {
-            notifyIcon.remove()
+            notifyIcon?.remove()
         }
     }
+}
+
+export function setUpdateAvailable(version: string, restart: () => void) {
+    pendingUpdate = { version, restart }
+    notifyIcon?.update({
+        notification: {
+            title: 'WebCaster update ready',
+            text: `Version ${version} downloaded. Right-click the tray icon to restart.`,
+            sound: true
+        }
+    })
 }

@@ -6,6 +6,9 @@ export let dbPath = join(appDataDirectory, 'webcaster.sqlite')
 export let voicePreviewsDirectory = join(appDataDirectory, 'voices')
 export let episodesDirectory = join(appDataDirectory, 'episodes')
 
+export let updateDir = join(appDataDirectory, 'update')
+export let updateExePath = join(updateDir, 'WebCaster.exe')
+
 export function voicePreviewPath(voiceId: string) {
 	return join(voicePreviewsDirectory, `${voiceId}.mp3`)
 }

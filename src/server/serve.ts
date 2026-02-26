@@ -5,6 +5,7 @@ import { buildPodcastFeedXml, getFeedByPodcastSlug, startFeedPolling, streamEpis
 import { setupNotificationIcon } from "./notification-icon"
 import { appRouter } from "./trpc/app-router"
 import { streamVoicePreviewAudio } from "./tts/voice-preview"
+import { startUpdateChecker } from "./updater"
 
 let server = serve({
     development: true,
@@ -57,3 +58,5 @@ console.log(`🚀 Server running at ${server.url}`)
 startFeedPolling(server.url.href)
 
 await setupNotificationIcon(server.url.href)
+
+startUpdateChecker()
