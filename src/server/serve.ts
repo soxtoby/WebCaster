@@ -25,14 +25,10 @@ let server = serve({
                 }
             })
         },
-        '/preview/:voiceId': async (request) => {
-            return await streamVoicePreviewAudio(request.params.voiceId)
-        },
-        '/feed/:slug/:episodeId': async (request) => {
+        '/feed/:slug/:episodeKey': async (request) => {
             let slug = request.params.slug
-            let episodeIdRaw = request.params.episodeId.replace(/\.mp3$/, '')
-            let episodeId = Number(episodeIdRaw)
-            if (!Number.isInteger(episodeId) || episodeId <= 0)
+            let episodeKey = request.params.episodeKey.trim().replace(/\.mp3$/i, '')
+            if (!episodeKey)
                 return new Response('Episode not found', { status: 404 })
 
             let feed = await getFeedByPodcastSlug(slug)
@@ -40,7 +36,10 @@ let server = serve({
                 return new Response('Feed not found', { status: 404 })
 
             let baseUrl = new URL(request.url).origin
-            return await streamEpisodeAudio(feed, episodeId, baseUrl)
+            return await streamEpisodeAudio(feed, episodeKey, baseUrl)
+        },
+        '/preview/:voiceId': async (request) => {
+            return await streamVoicePreviewAudio(request.params.voiceId)
         },
         '/api/:procedure': (request) => {
             return fetchRequestHandler({

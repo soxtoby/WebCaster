@@ -64,6 +64,27 @@
       "when": 1771785600000,
       "tag": "0008_remove_feed_language",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1771800000000,
+      "tag": "0009_episode_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1771833600000,
+      "tag": "0010_remove_article_id_truncate",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1771837200000,
+      "tag": "0011_remove_audio_path_truncate",
+      "breakpoints": true
     }
   ]
 }

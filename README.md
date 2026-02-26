@@ -49,6 +49,6 @@ The UI follows the system color preference using `prefers-color-scheme`.
 - tRPC endpoint: `POST /api/*`
 - Podcast feed endpoint: `GET /feed/:slug`
 - Voice preview endpoint: `GET /preview/:voiceId`
-- Episode audio endpoint: `GET /feed/:slug/:episodeId`
+- Episode audio endpoint: `GET /feed/:slug/:episodeTitle`
 
 Feed data is stored locally in SQLite at `data/webcaster.sqlite`.

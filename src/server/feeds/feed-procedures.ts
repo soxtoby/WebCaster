@@ -53,14 +53,14 @@ export const deleteFeed = procedure
 
 export const episodes = procedure
     .input(FeedIdInput)
-    .query(({ input }) => {
+    .query(async ({ input }) => {
         let feed = getFeedRecordById(input.id)
         if (!feed)
             throw new TRPCError({ code: 'NOT_FOUND', message: 'Feed not found' })
 
         return {
             podcastUrl: `/feed/${feed.podcastSlug}`,
-            episodes: listFeedEpisodes(feed.id)
+            episodes: await listFeedEpisodes(feed.id)
         }
     })
 

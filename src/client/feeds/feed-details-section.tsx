@@ -11,7 +11,7 @@ type FeedDraft = {
 }
 
 type Episode = {
-    id: number
+    episodeKey: string
     title: string
     sourceUrl: string
     publishedAt: string | null
@@ -23,7 +23,7 @@ type Episode = {
 
 export function FeedDetailsSection(props: {
     activeEpisodeAudioUrl: string
-    activeEpisodeId: number | null
+    activeEpisodeKey: string | null
     draft: FeedDraft
     episodes: Episode[]
     error: string
@@ -118,9 +118,9 @@ export function FeedDetailsSection(props: {
                 {props.episodes.length == 0
                     ? <p className={classes(statusStyle)}>No episodes discovered yet.</p>
                     : <div className={classes(episodeListStyle)}>{props.episodes.map(episode => {
-                        let isPlayingEpisode = props.activeEpisodeId == episode.id
+                        let isPlayingEpisode = props.activeEpisodeKey == episode.episodeKey
 
-                        return <article className={classes(episodeCardStyle)} key={episode.id}>
+                        return <article className={classes(episodeCardStyle)} key={episode.episodeKey}>
                             <div className={classes(episodeTopRowStyle)}>
                                 <p className={classes(episodeTitleStyle)}>{episode.title}</p>
                                 <button

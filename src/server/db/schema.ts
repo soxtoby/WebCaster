@@ -41,15 +41,14 @@ export const feedsTable = sqliteTable('feeds', {
 
 export type Article = InferSelectModel<typeof articlesTable>
 export const articlesTable = sqliteTable('articles', {
-    id: integer('id').primaryKey({ autoIncrement: true }),
     feedId: integer('feed_id').notNull().references(() => feedsTable.id, { onDelete: 'cascade' }),
+    episodeKey: text('episode_key').notNull().default(''),
     guid: text('guid'),
     sourceUrl: text('source_url').notNull(),
     title: text('title').notNull(),
     summary: text('summary'),
     content: text('content'),
     audioUrl: text('audio_url'),
-    audioPath: text('audio_path'),
     status: text('status').notNull().default('pending'),
     errorMessage: text('error_message'),
     generationMode: text('generation_mode'),
@@ -59,5 +58,6 @@ export const articlesTable = sqliteTable('articles', {
     createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
     updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`)
 }, table => [
-    uniqueIndex('articles_feed_source_unique').on(table.feedId, table.sourceUrl)
+    uniqueIndex('articles_feed_source_unique').on(table.feedId, table.sourceUrl),
+    uniqueIndex('articles_feed_episode_key_unique').on(table.feedId, table.episodeKey)
 ])

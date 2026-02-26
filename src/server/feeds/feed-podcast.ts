@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm"
-import { mkdirSync } from "node:fs"
+import { mkdir } from "node:fs/promises"
 import { join } from "node:path"
 import { database } from "../db"
 import { appDataDirectory } from "../db/location"
@@ -18,9 +18,10 @@ type ParsedFeedArticle = {
 }
 
 type EpisodeView = {
-    id: number
+    episodeKey: string
     title: string
     sourceUrl: string
+    episodePath: string
     publishedAt: string | null
     status: string
     errorMessage: string | null
@@ -52,30 +53,38 @@ export async function getFeedByPodcastSlug(slug: string) {
     return database.select().from(feedsTable).where(eq(feedsTable.podcastSlug, slug)).get() || null
 }
 
-export function listFeedEpisodes(feedId: number): EpisodeView[] {
-    let rows = database
+export async function listFeedEpisodes(feedId: number): Promise<EpisodeView[]> {
+    let feed = database.select({ podcastSlug: feedsTable.podcastSlug }).from(feedsTable).where(eq(feedsTable.id, feedId)).get()
+    if (!feed)
+        return []
+
+    let episodes = database
         .select({
-            id: articlesTable.id,
+            episodeKey: articlesTable.episodeKey,
             title: articlesTable.title,
             sourceUrl: articlesTable.sourceUrl,
             publishedAt: articlesTable.publishedAt,
             status: articlesTable.status,
-            errorMessage: articlesTable.errorMessage,
-            audioPath: articlesTable.audioPath
+            errorMessage: articlesTable.errorMessage
         })
         .from(articlesTable)
         .where(eq(articlesTable.feedId, feedId))
-        .orderBy(desc(articlesTable.publishedAt), desc(articlesTable.id))
+        .orderBy(desc(articlesTable.publishedAt), desc(articlesTable.createdAt))
         .all()
 
-    return rows.map(row => ({
-        id: row.id,
-        title: row.title,
-        sourceUrl: row.sourceUrl,
-        publishedAt: row.publishedAt,
-        status: row.status,
-        errorMessage: row.errorMessage,
-        audioReady: Boolean(row.audioPath)
+    return await Promise.all(episodes.map(async row => {
+        let episodeKey = resolveEpisodeKey(row.episodeKey, row.title, row.sourceUrl)
+        let audioReady = await Bun.file(resolveAudioPath(feed.podcastSlug, episodeKey)).exists()
+        return {
+            episodeKey,
+            title: row.title,
+            sourceUrl: row.sourceUrl,
+            episodePath: `/feed/${feed.podcastSlug}/${episodeKey}`,
+            publishedAt: row.publishedAt,
+            status: row.status,
+            errorMessage: row.errorMessage,
+            audioReady
+        }
     }))
 }
 
@@ -86,7 +95,7 @@ export async function buildPodcastFeedXml(feed: Feed, serverBaseUrl: string) {
         .select()
         .from(articlesTable)
         .where(eq(articlesTable.feedId, feed.id))
-        .orderBy(desc(articlesTable.publishedAt), desc(articlesTable.id))
+        .orderBy(desc(articlesTable.publishedAt), desc(articlesTable.createdAt))
         .all()
 
     let safeTitle = escapeXml(feed.name)
@@ -97,35 +106,29 @@ export async function buildPodcastFeedXml(feed: Feed, serverBaseUrl: string) {
     return `<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0">\n<channel>\n<title>${safeTitle}</title>\n<link>${escapeXml(feed.rssUrl)}</link>\n<description>${safeDescription}</description>\n${channelImage}\n${items}\n</channel>\n</rss>`
 }
 
-export async function streamEpisodeAudio(feed: Feed, articleId: number, serverBaseUrl: string): Promise<Response> {
-    let article = database
-        .select()
-        .from(articlesTable)
-        .where(and(eq(articlesTable.id, articleId), eq(articlesTable.feedId, feed.id)))
-        .get()
+export async function streamEpisodeAudio(feed: Feed, episodeKey: string, serverBaseUrl: string): Promise<Response> {
+    let article = findArticleByEpisodeKey(feed.id, episodeKey)
 
     if (!article)
         return new Response('Episode not found', { status: 404 })
 
-    let resolvedPath = resolveAudioPath(feed.podcastSlug, article.id)
-    if (article.audioPath) {
-        let existing = Bun.file(article.audioPath)
-        if (await existing.exists())
-            return new Response(existing, { headers: { 'content-type': 'audio/mpeg' } })
-    }
+    let resolvedPath = resolveAudioPath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
+    let preferredFile = Bun.file(resolvedPath)
+    if (await preferredFile.exists())
+        return new Response(preferredFile, { headers: { 'content-type': 'audio/mpeg' } })
 
     let generated: StreamedAudio
     try {
         generated = await createAudioStream(feed, article)
     } catch (error) {
         let message = error instanceof Error ? error.message : 'Audio generation failed'
-        markArticleFailed(article.id, message)
+        markArticleFailed(feed.id, article.episodeKey, message)
         return new Response(message, { status: 400 })
     }
 
-    markArticleGenerating(article.id, feed)
+    markArticleGenerating(feed.id, article.episodeKey, feed)
     let [toClient, toDisk] = generated.stream.tee()
-    void persistAudioStream(toDisk, resolvedPath, article.id, feed, serverBaseUrl)
+    void persistAudioStream(toDisk, resolvedPath, article, feed, serverBaseUrl)
 
     return new Response(toClient, {
         headers: {
@@ -151,10 +154,12 @@ async function syncFeed(feed: Feed, serverBaseUrl: string, limit: number) {
 
     items = items.slice(0, limit)
     for (let item of items) {
+        let episodeKey = buildEpisodeRouteKey(item.title, item.sourceUrl)
         database
             .insert(articlesTable)
             .values({
                 feedId: feed.id,
+                episodeKey,
                 guid: item.guid,
                 sourceUrl: item.sourceUrl,
                 title: item.title,
@@ -178,7 +183,7 @@ async function syncFeed(feed: Feed, serverBaseUrl: string, limit: number) {
                 eq(articlesTable.feedId, feed.id),
                 inArray(articlesTable.status, ['pending', 'failed'])
             ))
-            .orderBy(desc(articlesTable.publishedAt), desc(articlesTable.id))
+            .orderBy(desc(articlesTable.publishedAt), desc(articlesTable.createdAt))
             .all()
 
         for (let article of pending)
@@ -187,23 +192,23 @@ async function syncFeed(feed: Feed, serverBaseUrl: string, limit: number) {
 }
 
 async function generateAndStoreAudio(feed: Feed, article: Article, serverBaseUrl: string) {
-    let resolvedPath = resolveAudioPath(feed.podcastSlug, article.id)
+    let resolvedPath = resolveAudioPath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
     let file = Bun.file(resolvedPath)
     if (await file.exists()) {
-        markArticleReady(article.id, resolvedPath, buildAudioUrl(feed, article.id, serverBaseUrl))
+        markArticleReady(feed.id, article.episodeKey, buildAudioUrl(feed, article, serverBaseUrl))
         return
     }
 
     if (article.status == 'generating')
         return
 
-    markArticleGenerating(article.id, feed)
+    markArticleGenerating(feed.id, article.episodeKey, feed)
     try {
         let generated = await createAudioStream(feed, article)
-        await persistAudioStream(generated.stream, resolvedPath, article.id, feed, serverBaseUrl)
+        await persistAudioStream(generated.stream, resolvedPath, article, feed, serverBaseUrl)
     } catch (error) {
         let message = error instanceof Error ? error.message : 'Audio generation failed'
-        markArticleFailed(article.id, message)
+        markArticleFailed(feed.id, article.episodeKey, message)
     }
 }
 
@@ -227,14 +232,14 @@ function isTtsProvider(value: string): value is TtsProvider {
     return value == 'inworld' || value == 'openai' || value == 'elevenlabs' || value == 'lemonfox'
 }
 
-async function persistAudioStream(stream: ReadableStream<Uint8Array>, outputPath: string, articleId: number, feed: Feed, serverBaseUrl: string) {
+async function persistAudioStream(stream: ReadableStream<Uint8Array>, outputPath: string, article: Article, feed: Feed, serverBaseUrl: string) {
     try {
-        mkdirSync(join(appDataDirectory, 'audio', feed.podcastSlug), { recursive: true })
+        await mkdir(join(appDataDirectory, 'audio', feed.podcastSlug), { recursive: true })
         await writeStreamToFile(stream, outputPath)
-        markArticleReady(articleId, outputPath, buildAudioUrl(feed, articleId, serverBaseUrl))
+        markArticleReady(feed.id, article.episodeKey, buildAudioUrl(feed, article, serverBaseUrl))
     }
     catch {
-        markArticleFailed(articleId, 'Failed to store generated audio')
+        markArticleFailed(feed.id, article.episodeKey, 'Failed to store generated audio')
     }
 }
 
@@ -257,7 +262,7 @@ async function writeStreamToFile(stream: ReadableStream<Uint8Array>, outputPath:
     }
 }
 
-function markArticleGenerating(articleId: number, feed: Feed) {
+function markArticleGenerating(feedId: number, episodeKey: string, feed: Feed) {
     database
         .update(articlesTable)
         .set({
@@ -268,25 +273,24 @@ function markArticleGenerating(articleId: number, feed: Feed) {
             lastGenerationAttemptAt: sql`CURRENT_TIMESTAMP`,
             updatedAt: sql`CURRENT_TIMESTAMP`
         })
-        .where(eq(articlesTable.id, articleId))
+        .where(and(eq(articlesTable.feedId, feedId), eq(articlesTable.episodeKey, episodeKey)))
         .run()
 }
 
-function markArticleReady(articleId: number, audioPath: string, audioUrl: string) {
+function markArticleReady(feedId: number, episodeKey: string, audioUrl: string) {
     database
         .update(articlesTable)
         .set({
             status: 'ready',
             errorMessage: null,
-            audioPath,
             audioUrl,
             updatedAt: sql`CURRENT_TIMESTAMP`
         })
-        .where(eq(articlesTable.id, articleId))
+        .where(and(eq(articlesTable.feedId, feedId), eq(articlesTable.episodeKey, episodeKey)))
         .run()
 }
 
-function markArticleFailed(articleId: number, reason: string) {
+function markArticleFailed(feedId: number, episodeKey: string, reason: string) {
     database
         .update(articlesTable)
         .set({
@@ -294,7 +298,7 @@ function markArticleFailed(articleId: number, reason: string) {
             errorMessage: reason,
             updatedAt: sql`CURRENT_TIMESTAMP`
         })
-        .where(eq(articlesTable.id, articleId))
+        .where(and(eq(articlesTable.feedId, feedId), eq(articlesTable.episodeKey, episodeKey)))
         .run()
 }
 
@@ -478,7 +482,7 @@ function normalizeDate(value: string) {
 }
 
 function buildRssItem(feed: Feed, article: Article, serverBaseUrl: string) {
-    let enclosureUrl = buildAudioUrl(feed, article.id, serverBaseUrl)
+    let enclosureUrl = buildAudioUrl(feed, article, serverBaseUrl)
     let guid = article.sourceUrl || article.guid || enclosureUrl
     let published = article.publishedAt ? `<pubDate>${new Date(article.publishedAt).toUTCString()}</pubDate>` : ''
     let description = escapeXml(article.summary || '')
@@ -496,10 +500,105 @@ function escapeXml(value: string) {
         .replace(/'/g, '&apos;')
 }
 
-function resolveAudioPath(podcastSlug: string, articleId: number) {
-    return join(appDataDirectory, 'audio', podcastSlug, `${articleId}.mp3`)
+function resolveAudioPath(podcastSlug: string, episodeKey: string) {
+    return join(appDataDirectory, 'audio', podcastSlug, `${episodeKey}.mp3`)
 }
 
-function buildAudioUrl(feed: Feed, articleId: number, serverBaseUrl: string) {
-    return `${serverBaseUrl.replace(/\/+$/, '')}/feed/${feed.podcastSlug}/${articleId}`
+function buildAudioUrl(feed: Feed, article: Pick<Article, 'episodeKey' | 'title' | 'sourceUrl'>, serverBaseUrl: string) {
+    let episodeKey = resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl)
+    return `${serverBaseUrl.replace(/\/+$/, '')}/feed/${feed.podcastSlug}/${episodeKey}`
+}
+
+function findArticleByEpisodeKey(feedId: number, episodeKey: string) {
+    let normalizedKey = normalizeEpisodeKey(episodeKey)
+    let direct = database
+        .select()
+        .from(articlesTable)
+        .where(and(eq(articlesTable.feedId, feedId), eq(articlesTable.episodeKey, normalizedKey)))
+        .get()
+    if (direct)
+        return direct
+
+    let legacyArticles = database
+        .select()
+        .from(articlesTable)
+        .where(eq(articlesTable.feedId, feedId))
+        .all()
+
+    for (let article of legacyArticles) {
+        let resolvedKey = resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl)
+        if (resolvedKey == normalizedKey)
+            return ensureStoredEpisodeKey(article, resolvedKey)
+    }
+
+    return null
+}
+
+function buildEpisodeRouteKey(title: string, sourceUrl: string) {
+    let base = slugifyEpisodeTitle(title)
+    let suffix = hashText(sourceUrl).slice(0, 8)
+    return `${base}-${suffix}`
+}
+
+function resolveEpisodeKey(storedKey: string, title: string, sourceUrl: string) {
+    let normalizedStored = normalizeEpisodeKey(storedKey)
+    if (normalizedStored)
+        return normalizedStored
+
+    return buildEpisodeRouteKey(title, sourceUrl)
+}
+
+function normalizeEpisodeKey(value: string) {
+    let decoded = value
+    try {
+        decoded = decodeURIComponent(value)
+    }
+    catch {
+        decoded = value
+    }
+
+    return decoded.trim().replace(/\.mp3$/i, '')
+}
+
+function slugifyEpisodeTitle(value: string) {
+    let normalized = value
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 64)
+
+    if (normalized)
+        return normalized
+
+    return 'episode'
+}
+
+function hashText(value: string) {
+    let hash = 5381
+    for (let char of value)
+        hash = ((hash << 5) + hash) + char.charCodeAt(0)
+
+    return Math.abs(hash >>> 0).toString(36)
+}
+
+function ensureStoredEpisodeKey(article: Article, episodeKey: string) {
+    if (article.episodeKey != episodeKey) {
+        database
+            .update(articlesTable)
+            .set({
+                episodeKey,
+                updatedAt: sql`CURRENT_TIMESTAMP`
+            })
+            .where(and(eq(articlesTable.feedId, article.feedId), eq(articlesTable.sourceUrl, article.sourceUrl)))
+            .run()
+
+        return {
+            ...article,
+            episodeKey
+        }
+    }
+
+    return article
 }

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import { mkdirSync, renameSync } from "node:fs"
+import { mkdir, rename } from "node:fs/promises"
 import { join } from "node:path"
 import { appDataDirectory, resolvePreviewPath } from "../db/location"
 import { getCachedVoiceById, listProviderSettings } from "../settings/settings-repository"
@@ -55,13 +55,13 @@ async function ensurePreviewFile(previewKey: string, outputPath: string, provide
 }
 
 async function generatePreviewFile(outputPath: string, provider: TtsProvider, providerVoiceId: string, settings: ReturnType<typeof listProviderSettings>): Promise<string> {
-    mkdirSync(join(appDataDirectory, 'voice-previews'), { recursive: true })
+    await mkdir(join(appDataDirectory, 'voice-previews'), { recursive: true })
 
     let generated = await streamSpeech(provider, providerVoiceId, previewText, settings)
     let tempPath = `${outputPath}.${Date.now()}.tmp`
 
     await writeStreamToFile(generated.stream, tempPath)
-    renameSync(tempPath, outputPath)
+    await rename(tempPath, outputPath)
     return outputPath
 }
 
