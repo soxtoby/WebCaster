@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto"
 import { mkdir, rename } from "node:fs/promises"
-import { join } from "node:path"
-import { appDataDirectory, resolvePreviewPath } from "../db/location"
+import { voicePreviewPath, voicePreviewsDirectory } from "../paths"
 import { getCachedVoiceById, listProviderSettings } from "../settings/settings-repository"
 import { type TtsProvider } from "../settings/settings-types"
 import { streamSpeech } from "./tts"
@@ -21,41 +20,39 @@ export async function streamVoicePreviewAudio(voiceId: string): Promise<Response
     if (!isTtsProvider(voice.provider))
         return new Response('Voice provider is invalid', { status: 400 })
 
-    let previewKey = buildPreviewCacheKey(voice.id, previewText)
-    let outputPath = resolvePreviewPath(previewKey)
+    let outputPath = voicePreviewPath(voice.id)
     let cachedFile = Bun.file(outputPath)
     if (await cachedFile.exists())
         return createAudioResponse(cachedFile)
 
     let settings = listProviderSettings()
     try {
-        let generated = await ensurePreviewFile(previewKey, outputPath, voice.provider, voice.providerVoiceId, settings)
+        let generated = await ensurePreviewFile(voice.id, outputPath, voice.provider, voice.providerVoiceId, settings)
         return createAudioResponse(Bun.file(generated))
-    }
-    catch (error) {
+    } catch (error) {
         let message = error instanceof Error ? error.message : 'Voice preview generation failed'
         return new Response(message, { status: 400 })
     }
 
 }
 
-async function ensurePreviewFile(previewKey: string, outputPath: string, provider: TtsProvider, providerVoiceId: string, settings: ReturnType<typeof listProviderSettings>) {
-    let pending = pendingPreviewGenerations.get(previewKey)
+async function ensurePreviewFile(voiceId: string, outputPath: string, provider: TtsProvider, providerVoiceId: string, settings: ReturnType<typeof listProviderSettings>) {
+    let pending = pendingPreviewGenerations.get(voiceId)
     if (pending)
         return await pending
 
     let generation = generatePreviewFile(outputPath, provider, providerVoiceId, settings)
-    pendingPreviewGenerations.set(previewKey, generation)
+    pendingPreviewGenerations.set(voiceId, generation)
 
     try {
         return await generation
     } finally {
-        pendingPreviewGenerations.delete(previewKey)
+        pendingPreviewGenerations.delete(voiceId)
     }
 }
 
 async function generatePreviewFile(outputPath: string, provider: TtsProvider, providerVoiceId: string, settings: ReturnType<typeof listProviderSettings>): Promise<string> {
-    await mkdir(join(appDataDirectory, 'voice-previews'), { recursive: true })
+    await mkdir(voicePreviewsDirectory, { recursive: true })
 
     let generated = await streamSpeech(provider, providerVoiceId, previewText, settings)
     let tempPath = `${outputPath}.${Date.now()}.tmp`

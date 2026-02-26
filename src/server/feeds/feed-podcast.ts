@@ -1,9 +1,8 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm"
 import { mkdir } from "node:fs/promises"
-import { join } from "node:path"
 import { database } from "../db"
-import { appDataDirectory } from "../db/location"
 import { articlesTable, feedsTable, type Article, type Feed } from "../db/schema"
+import { episodePath, podcastDirectory } from "../paths"
 import { getCachedVoiceById, listProviderSettings } from "../settings/settings-repository"
 import { type TtsProvider } from "../settings/settings-types"
 import { streamSpeech, type StreamedAudio } from "../tts/tts"
@@ -74,7 +73,7 @@ export async function listFeedEpisodes(feedId: number): Promise<EpisodeView[]> {
 
     return await Promise.all(episodes.map(async row => {
         let episodeKey = resolveEpisodeKey(row.episodeKey, row.title, row.sourceUrl)
-        let audioReady = await Bun.file(resolveAudioPath(feed.podcastSlug, episodeKey)).exists()
+        let audioReady = await Bun.file(episodePath(feed.podcastSlug, episodeKey)).exists()
         return {
             episodeKey,
             title: row.title,
@@ -112,7 +111,7 @@ export async function streamEpisodeAudio(feed: Feed, episodeKey: string, serverB
     if (!article)
         return new Response('Episode not found', { status: 404 })
 
-    let resolvedPath = resolveAudioPath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
+    let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
     let preferredFile = Bun.file(resolvedPath)
     if (await preferredFile.exists())
         return new Response(preferredFile, { headers: { 'content-type': 'audio/mpeg' } })
@@ -192,7 +191,7 @@ async function syncFeed(feed: Feed, serverBaseUrl: string, limit: number) {
 }
 
 async function generateAndStoreAudio(feed: Feed, article: Article, serverBaseUrl: string) {
-    let resolvedPath = resolveAudioPath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
+    let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
     let file = Bun.file(resolvedPath)
     if (await file.exists()) {
         markArticleReady(feed.id, article.episodeKey, buildAudioUrl(feed, article, serverBaseUrl))
@@ -234,7 +233,7 @@ function isTtsProvider(value: string): value is TtsProvider {
 
 async function persistAudioStream(stream: ReadableStream<Uint8Array>, outputPath: string, article: Article, feed: Feed, serverBaseUrl: string) {
     try {
-        await mkdir(join(appDataDirectory, 'audio', feed.podcastSlug), { recursive: true })
+        await mkdir(podcastDirectory(feed.podcastSlug), { recursive: true })
         await writeStreamToFile(stream, outputPath)
         markArticleReady(feed.id, article.episodeKey, buildAudioUrl(feed, article, serverBaseUrl))
     }
@@ -498,10 +497,6 @@ function escapeXml(value: string) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&apos;')
-}
-
-function resolveAudioPath(podcastSlug: string, episodeKey: string) {
-    return join(appDataDirectory, 'audio', podcastSlug, `${episodeKey}.mp3`)
 }
 
 function buildAudioUrl(feed: Feed, article: Pick<Article, 'episodeKey' | 'title' | 'sourceUrl'>, serverBaseUrl: string) {

@@ -2,9 +2,10 @@ import { Database } from "bun:sqlite"
 import { drizzle } from "drizzle-orm/bun-sqlite"
 import { migrate } from "drizzle-orm/bun-sqlite/migrator"
 import { mkdir } from "node:fs/promises"
-import { appDataDirectory, dbPath } from "./location"
+import { dbPath } from "../paths"
+import { dirname } from "path"
 
-await mkdir(appDataDirectory, { recursive: true })
+await mkdir(dirname(dbPath), { recursive: true })
 
 export const db = new Database(dbPath, { create: true })
 export const database = drizzle(db)
