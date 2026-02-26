@@ -6,7 +6,8 @@
   "scripts": {
     "start": "bun src/server/serve.ts",
     "typecheck": "tsc --noEmit",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "compile": "bun build src/server/serve.ts --compile --outfile out/WebCaster.exe --target=bun-windows-x64 --windows-icon=src/server/icon.ico --title=WebCaster"
   },
   "devDependencies": {
     "@types/bun": "^1.3.9",
