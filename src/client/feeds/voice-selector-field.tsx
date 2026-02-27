@@ -81,36 +81,57 @@ function buildVoiceSummaryText(option: VoiceOption | null, selectedVoiceId: stri
 }
 
 let fieldGroupStyle = style('voiceSelectorFieldGroup', {
-    display: 'grid',
-    gap: 6
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    minWidth: 0
 })
 
 let labelStyle = style('voiceSelectorLabel', {
-    fontSize: 13,
+    fontSize: 12,
+    fontWeight: 600,
     color: 'var(--muted)'
 })
 
 let inputStyle = style('voiceSelectorInput', {
     width: '100%',
     border: '1px solid var(--border)',
-    borderRadius: 8,
-    padding: [10, 12],
-    backgroundColor: 'transparent',
-    color: 'inherit'
+    borderRadius: 6,
+    padding: '8px 12px',
+    backgroundColor: 'var(--bg)',
+    color: 'var(--text)',
+    minHeight: 34,
+    display: 'flex',
+    alignItems: 'center',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    fontSize: 13
 })
 
 let buttonStyle = style('voiceSelectorButton', {
     border: '1px solid var(--border)',
-    borderRadius: 8,
-    padding: [9, 12],
-    backgroundColor: 'transparent',
-    color: 'inherit',
-    cursor: 'pointer'
+    borderRadius: 6,
+    padding: '8px 12px',
+    minHeight: 34,
+    backgroundColor: 'var(--panel)',
+    color: 'var(--text)',
+    cursor: 'pointer',
+    fontSize: 13,
+    fontWeight: 500,
+    whiteSpace: 'nowrap',
+    transition: 'border-color 0.15s',
+    $: {
+        '&:hover': {
+            borderColor: 'var(--muted)'
+        }
+    }
 })
+
 let voicePickerInlineStyle = style('voiceSelectorInline', {
     display: 'grid',
     gridTemplateColumns: 'minmax(0, 1fr) auto',
     gap: 8,
-    alignItems: 'center',
+    alignItems: 'stretch',
     cursor: 'pointer'
 })

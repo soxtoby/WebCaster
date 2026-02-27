@@ -236,8 +236,10 @@ let errorStyle = style('voiceSelectorDialogError', {
 let voicePreviewListStyle = style('voiceSelectorDialogPreviewList', {
     display: 'grid',
     gap: 6,
+    alignContent: 'start',
     marginTop: 6,
-    maxHeight: 320,
+    flex: '1 1 auto',
+    minHeight: 0,
     overflowY: 'auto',
     paddingRight: 2
 })
@@ -256,8 +258,8 @@ let voiceModalStyle = style('voiceSelectorDialog', {
     width: 'min(760px, 100%)',
     maxHeight: '80vh',
     overflow: 'hidden',
-    display: 'grid',
-    gridTemplateRows: 'auto minmax(0, 1fr) auto',
+    display: 'flex',
+    flexDirection: 'column',
     backgroundColor: 'var(--panel)',
     border: '1px solid var(--border)',
     borderRadius: 12,

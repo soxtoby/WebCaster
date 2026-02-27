@@ -1,4 +1,4 @@
-import { type ChangeEvent } from "react"
+import { type ChangeEvent, useState } from "react"
 import { classes, style } from "stylemap"
 import { VoiceSelectorField, type VoiceOption } from "./voice-selector-field"
 
@@ -37,116 +37,191 @@ export function FeedDetailsSection(props: {
     status: string
     voiceOptions: VoiceOption[]
 }) {
+    let [isSettingsExpanded, setIsSettingsExpanded] = useState(!props.isEditing)
+
+    let sortedEpisodes = [...props.episodes].sort((a, b) => {
+        if (!a.publishedAt) return 1
+        if (!b.publishedAt) return -1
+        return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
+    })
+
     return <section className={classes(panelStyle)}>
-        <h2 className={classes(panelHeadingStyle)}>{props.isEditing ? 'Feed details' : 'Add feed'}</h2>
-        <form
-            className={classes(formStyle)}
-            onSubmit={event => {
-                event.preventDefault()
-                props.onSubmit()
-            }}
-        >
-            <Field
-                label="Name"
-                value={props.draft.name}
-                onChange={value => props.onDraftChange('name', value)}
-                placeholder="Daily Tech News"
-            />
-            <Field
-                label="RSS URL"
-                value={props.draft.rssUrl}
-                onChange={value => props.onDraftChange('rssUrl', value)}
-                placeholder="https://example.com/feed.xml"
-            />
-            <VoiceSelectorField
-                label="Voice"
-                value={props.draft.voice}
-                options={props.voiceOptions}
-                onChange={value => props.onDraftChange('voice', value)}
-            />
-            <TextSelectField
-                label="Generation mode"
-                value={props.draft.generationMode}
-                options={['on_demand', 'every_episode']}
-                onChange={value => props.onDraftChange('generationMode', value)}
-            />
-            <TextSelectField
-                label="Content source"
-                value={props.draft.contentSource}
-                options={['feed_article', 'source_page']}
-                onChange={value => props.onDraftChange('contentSource', value)}
-            />
+        <header className={classes(headerStyle)}>
+            <div className={classes(headerInfoStyle)}>
+                <h2 className={classes(headerTitleStyle)}>{props.draft.name || (props.isEditing ? 'Unnamed Feed' : 'New Feed')}</h2>
+                {props.isEditing
+                    ? <a className={classes(rssLinkStyle)} href={props.draft.rssUrl} target="_blank" rel="noreferrer">
+                        {props.draft.rssUrl}
+                    </a>
+                    : null
+                }
+            </div>
 
-            {props.podcastUrl
-                ? <label className={classes(fieldGroupStyle)}>
-                    <span className={classes(labelStyle)}>Podcast feed URL</span>
-                    <a className={classes(linkStyle)} href={props.podcastUrl} rel="noreferrer" target="_blank">{props.podcastUrl}</a>
-                </label>
-                : null}
-
-            <div className={classes(buttonRowStyle)}>
-                <button className={classes([buttonStyle, primaryButtonStyle])} type="submit">
-                    {props.isEditing ? 'Save changes' : 'Add feed'}
-                </button>
-                {!props.isEditing
-                    ? <button
-                        className={classes(buttonStyle)}
-                        onClick={props.onCancel}
-                        type="button"
-                    >
-                        Cancel
-                    </button>
-                    : null}
+            <div className={classes(headerActionsStyle)}>
                 {props.isEditing
                     ? <button
-                        className={classes([buttonStyle, dangerButtonStyle])}
-                        onClick={props.onDelete}
+                        className={classes([actionButtonStyle, isSettingsExpanded && activeActionButtonStyle])}
+                        onClick={() => setIsSettingsExpanded(prev => !prev)}
                         type="button"
                     >
-                        Delete feed
+                        {isSettingsExpanded ? 'Hide settings' : 'Settings'}
                     </button>
                     : null}
             </div>
-        </form>
+        </header>
 
-        {props.status ? <p className={classes(statusStyle)}>{props.status}</p> : null}
-        {props.error ? <p className={classes(errorStyle)}>{props.error}</p> : null}
+        {(isSettingsExpanded || !props.isEditing) && (
+            <div className={classes(settingsSectionStyle)}>
+                <div className={classes(settingsGridStyle)}>
+                    <Field
+                        label="Name"
+                        value={props.draft.name}
+                        onChange={value => props.onDraftChange('name', value)}
+                        placeholder="Daily Tech News"
+                    />
+                    <Field
+                        label="RSS URL"
+                        value={props.draft.rssUrl}
+                        onChange={value => props.onDraftChange('rssUrl', value)}
+                        placeholder="https://example.com/feed.xml"
+                    />
+                    <VoiceSelectorField
+                        label="Voice"
+                        value={props.draft.voice}
+                        options={props.voiceOptions}
+                        onChange={value => props.onDraftChange('voice', value)}
+                    />
+                    <TextSelectField
+                        label="Generation mode"
+                        value={props.draft.generationMode}
+                        options={['on_demand', 'every_episode']}
+                        onChange={value => props.onDraftChange('generationMode', value)}
+                    />
+                    <TextSelectField
+                        label="Content source"
+                        value={props.draft.contentSource}
+                        options={['feed_article', 'source_page']}
+                        onChange={value => props.onDraftChange('contentSource', value)}
+                    />
+                </div>
 
-        {props.isEditing
-            ? <div className={classes(episodesStyle)}>
-                <h3 className={classes(episodesHeadingStyle)}>Episodes</h3>
-                {props.episodes.length == 0
-                    ? <p className={classes(statusStyle)}>No episodes discovered yet.</p>
-                    : <div className={classes(episodeListStyle)}>{props.episodes.map(episode => {
-                        let isPlayingEpisode = props.activeEpisodeKey == episode.episodeKey
+                {props.podcastUrl && (
+                    <div className={classes(podcastUrlBannerStyle)}>
+                        <span className={classes(statusLabelStyle)}>Podcast Feed:</span>
+                        <a className={classes(rssLinkStyle)} href={props.podcastUrl} rel="noreferrer" target="_blank">{props.podcastUrl}</a>
+                    </div>
+                )}
 
-                        return <article className={classes(episodeCardStyle)} key={episode.episodeKey}>
-                            <div className={classes(episodeTopRowStyle)}>
-                                <p className={classes(episodeTitleStyle)}>{episode.title}</p>
-                                <button
-                                    aria-label="Play episode"
-                                    className={classes(episodePlayButtonStyle)}
-                                    onClick={() => props.onPlayEpisode(episode)}
-                                    type="button"
-                                >
-                                    ▶
-                                </button>
-                            </div>
-                            <p className={classes(episodeMetaStyle)}>{episode.status}{episode.audioReady ? ' · audio ready' : ''}</p>
-                            {isPlayingEpisode && props.activeEpisodeAudioUrl
-                                ? <audio
-                                    autoPlay
-                                    className={classes(episodeAudioStyle)}
-                                    controls
-                                    preload="none"
-                                    src={props.activeEpisodeAudioUrl}
-                                />
-                                : null}
-                            {episode.errorMessage ? <p className={classes(errorStyle)}>{episode.errorMessage}</p> : null}
-                        </article>
-                    })}</div>}
+                <div className={classes(settingsActionsStyle)}>
+                    {props.isEditing ? (
+                        <button
+                            className={classes([actionButtonStyle, dangerButtonStyle])}
+                            onClick={props.onDelete}
+                            type="button"
+                            title="Delete feed"
+                        >
+                            Delete
+                        </button>
+                    ) : (
+                        <button
+                            className={classes(actionButtonStyle)}
+                            onClick={props.onCancel}
+                            type="button"
+                        >
+                            Cancel
+                        </button>
+                    )}
+
+                    <div className={classes(spacerStyle)} />
+
+                    <button
+                        className={classes([actionButtonStyle, primaryButtonStyle])}
+                        onClick={props.onSubmit}
+                        type="button"
+                    >
+                        {props.isEditing ? 'Save' : 'Create Feed'}
+                    </button>
+                </div>
             </div>
-            : null}
+        )}
+
+        {(props.status || props.error) && (
+            <div className={classes(messageContainerStyle)}>
+                {props.status ? <span className={classes(statusStyle)}>{props.status}</span> : null}
+                {props.error ? <span className={classes(errorStyle)}>{props.error}</span> : null}
+            </div>
+        )}
+
+        {props.isEditing && (
+            <div className={classes(episodesAreaStyle)}>
+                <div className={classes(episodesListContainerStyle)}>
+                    {sortedEpisodes.length === 0 ? (
+                        <div className={classes(emptyEpisodesStyle)}>No episodes discovered yet.</div>
+                    ) : (
+                        <table className={classes(episodesTableStyle)}>
+                            <thead>
+                                <tr>
+                                    <th className={classes([thStyle, thTitleStyle])}>Episode Title</th>
+                                    <th className={classes([thStyle, thDateStyle])}>Published</th>
+                                    <th className={classes(thStyle)}>Status</th>
+                                    <th className={classes([thStyle, thAudioStyle])}>Audio</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {sortedEpisodes.map(episode => {
+                                    let isPlayingEpisode = props.activeEpisodeKey === episode.episodeKey
+
+                                    let dateStr = ''
+                                    if (episode.publishedAt) {
+                                        dateStr = new Date(episode.publishedAt).toLocaleDateString(undefined, {
+                                            month: 'short', day: 'numeric', year: 'numeric'
+                                        })
+                                    }
+
+                                    return (
+                                        <tr key={episode.episodeKey} className={classes([trStyle, isPlayingEpisode && activeTrStyle])}>
+                                            <td className={classes([tdStyle, tdTitleStyle])}>
+                                                <div className={classes(episodeTitleTextStyle)} title={episode.title}>{episode.title}</div>
+                                                {episode.errorMessage ? <div className={classes(episodeErrorTextStyle)}>{episode.errorMessage}</div> : null}
+                                            </td>
+                                            <td className={classes([tdStyle, tdDateStyle])}>
+                                                {dateStr}
+                                            </td>
+                                            <td className={classes(tdStyle)}>
+                                                <span className={classes([statusBadgeStyle, episode.status === 'completed' && completedBadgeStyle])}>
+                                                    {episode.status.replace('_', ' ')}
+                                                </span>
+                                            </td>
+                                            <td className={classes([tdStyle, tdAudioStyle])}>
+                                                {isPlayingEpisode && props.activeEpisodeAudioUrl ? (
+                                                    <audio
+                                                        autoPlay
+                                                        className={classes(compactAudioStyle)}
+                                                        controls
+                                                        preload="none"
+                                                        src={props.activeEpisodeAudioUrl}
+                                                    />
+                                                ) : (
+                                                    <button
+                                                        aria-label="Play episode"
+                                                        className={classes(playButtonStyle)}
+                                                        onClick={() => props.onPlayEpisode(episode)}
+                                                        type="button"
+                                                        title="Play audio"
+                                                    >
+                                                        ▶ Play
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    )
+                                })}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+            </div>
+        )}
     </section>
 }
 
@@ -156,10 +231,10 @@ function Field(props: {
     onChange: (value: string) => void
     placeholder?: string
 }) {
-    return <label className={classes(fieldGroupStyle)}>
-        <span className={classes(labelStyle)}>{props.label}</span>
+    return <label className={classes(fieldOuterStyle)}>
+        <span className={classes(fieldLabelStyle)}>{props.label}</span>
         <input
-            className={classes(inputStyle)}
+            className={classes(fieldInputStyle)}
             onChange={(event: ChangeEvent<HTMLInputElement>) => props.onChange(event.target.value)}
             placeholder={props.placeholder}
             type="text"
@@ -174,153 +249,364 @@ function TextSelectField(props: {
     options: string[]
     onChange: (value: string) => void
 }) {
-    return <label className={classes(fieldGroupStyle)}>
-        <span className={classes(labelStyle)}>{props.label}</span>
+    return <label className={classes(fieldOuterStyle)}>
+        <span className={classes(fieldLabelStyle)}>{props.label}</span>
         <select
-            className={classes(inputStyle)}
+            className={classes(fieldInputStyle)}
             onChange={(event: ChangeEvent<HTMLSelectElement>) => props.onChange(event.target.value)}
             value={props.value}
         >
-            {props.options.map(option => <option key={option} value={option}>{option}</option>)}
+            {props.options.map(option => (
+                <option key={option} value={option}>
+                    {option === 'on_demand' ? 'On demand' :
+                        option === 'every_episode' ? 'Every episode' :
+                            option === 'feed_article' ? 'Feed article' :
+                                option === 'source_page' ? 'Source page' : option}
+                </option>
+            ))}
         </select>
     </label>
 }
 
-let panelStyle = style('detailsPanel', {
+let panelStyle = style('panel', {
     backgroundColor: 'var(--panel)',
     border: '1px solid var(--border)',
+    borderRadius: 8,
+    display: 'flex',
+    flexDirection: 'column',
+    minHeight: 0,
+    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+    overflow: 'hidden'
+})
+
+let headerStyle = style('header', {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '16px 20px',
+    borderBottom: '1px solid var(--border)',
+    backgroundColor: 'var(--bg)',
+    gap: 16,
+    flexShrink: 0
+})
+
+let headerInfoStyle = style('headerInfo', {
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4
+})
+
+let headerTitleStyle = style('headerTitle', {
+    margin: 0,
+    fontSize: 18,
+    fontWeight: 600,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis'
+})
+
+let headerActionsStyle = style('headerActions', {
+    display: 'flex',
+    gap: 8,
+    flexShrink: 0
+})
+
+let actionButtonStyle = style('actionButton', {
+    border: '1px solid var(--border)',
+    borderRadius: 6,
+    padding: '6px 12px',
+    backgroundColor: 'var(--panel)',
+    color: 'var(--text)',
+    fontSize: 13,
+    fontWeight: 500,
+    cursor: 'pointer',
+    transition: 'all 0.15s ease'
+})
+
+let activeActionButtonStyle = style('activeActionButton', {
+    backgroundColor: 'var(--border)'
+})
+
+let primaryButtonStyle = style('primaryButton', {
+    backgroundColor: 'var(--accent)',
+    borderColor: 'var(--accent)',
+    color: 'var(--accent-text)',
+    border: 'none'
+})
+
+let dangerButtonStyle = style('dangerButton', {
+    color: 'var(--danger)',
+    borderColor: 'var(--border)'
+})
+
+let settingsSectionStyle = style('settingsSection', {
+    padding: 20,
+    borderBottom: '1px solid var(--border)',
+    backgroundColor: 'var(--panel)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+    flexShrink: 0
+})
+
+let settingsGridStyle = style('settingsGrid', {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+    gap: 16
+})
+
+let settingsActionsStyle = style('settingsActions', {
+    display: 'flex',
+    gap: 12,
+    alignItems: 'center',
+    paddingTop: 8,
+    marginTop: 'auto'
+})
+
+let spacerStyle = style('spacer', {
+    flex: 1
+})
+
+let podcastUrlBannerStyle = style('podcastBanner', {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '8px 12px',
+    backgroundColor: 'var(--bg)',
+    borderRadius: 6,
+    border: '1px solid var(--border)'
+})
+
+let rssLinkStyle = style('rssLink', {
+    color: 'var(--muted)',
+    fontSize: 13,
+    textDecoration: 'none',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    $: {
+        '&:hover': {
+            color: 'var(--accent)',
+            textDecoration: 'underline'
+        }
+    }
+})
+
+let statusLabelStyle = style('statusLabel', {
+    fontSize: 12,
+    fontWeight: 600,
+    color: 'var(--muted)'
+})
+
+let messageContainerStyle = style('messageContainer', {
+    padding: '8px 20px',
+    borderBottom: '1px solid var(--border)',
+    display: 'flex',
+    gap: 16,
+    fontSize: 13,
+    flexShrink: 0
+})
+
+let episodesAreaStyle = style('episodesArea', {
+    display: 'flex',
+    flexDirection: 'column',
+    flex: 1,
+    minHeight: 0,
+    backgroundColor: 'var(--panel)'
+})
+
+let episodesListContainerStyle = style('episodesListContainer', {
+    flex: 1,
+    overflowY: 'auto',
+    padding: 0
+})
+
+let episodesTableStyle = style('table', {
+    width: '100%',
+    borderCollapse: 'collapse',
+    textAlign: 'left',
+    tableLayout: 'fixed'
+})
+
+let emptyEpisodesStyle = style('emptyEpisodes', {
+    padding: 40,
+    textAlign: 'center',
+    color: 'var(--muted)',
+    fontSize: 14
+})
+
+let thStyle = style('th', {
+    padding: '10px 20px',
+    borderBottom: '1px solid var(--border)',
+    fontSize: 12,
+    fontWeight: 600,
+    color: 'var(--muted)',
+    position: 'sticky',
+    top: 0,
+    backgroundColor: 'var(--bg)',
+    zIndex: 1
+})
+
+let thTitleStyle = style('thTitle', {
+    width: '45%'
+})
+
+let thDateStyle = style('thDate', {
+    width: '15%'
+})
+
+let thAudioStyle = style('thAudio', {
+    width: '240px',
+    textAlign: 'right'
+})
+
+let trStyle = style('tr', {
+    borderBottom: '1px solid var(--border)',
+    $: {
+        '&:hover': {
+            backgroundColor: 'var(--bg)'
+        }
+    }
+})
+
+let activeTrStyle = style('activeTr', {
+    backgroundColor: 'color-mix(in srgb, var(--accent) 5%, transparent)',
+    $: {
+        '&:hover': {
+            backgroundColor: 'color-mix(in srgb, var(--accent) 8%, transparent)'
+        }
+    }
+})
+
+let tdStyle = style('td', {
+    padding: '12px 20px',
+    fontSize: 13,
+    verticalAlign: 'middle',
+    color: 'var(--text)'
+})
+
+let tdTitleStyle = style('tdTitle', {
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis'
+})
+
+let tdDateStyle = style('tdDate', {
+    color: 'var(--muted)'
+})
+
+let tdAudioStyle = style('tdAudio', {
+    textAlign: 'right'
+})
+
+let episodeTitleTextStyle = style('episodeTitle', {
+    fontWeight: 500,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis'
+})
+
+let episodeErrorTextStyle = style('episodeError', {
+    color: 'var(--danger)',
+    fontSize: 12,
+    marginTop: 4,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis'
+})
+
+let statusBadgeStyle = style('statusBadge', {
+    display: 'inline-block',
+    padding: '2px 8px',
     borderRadius: 12,
-    padding: 16
+    fontSize: 11,
+    fontWeight: 600,
+    backgroundColor: 'color-mix(in srgb, var(--muted) 15%, transparent)',
+    color: 'var(--text)',
+    textTransform: 'uppercase'
 })
 
-let panelHeadingStyle = style('detailsPanelHeading', {
-    margin: [0, 0, 12, 0],
-    fontSize: 18
+let completedBadgeStyle = style('completedBadge', {
+    backgroundColor: 'color-mix(in srgb, #10b981 15%, transparent)',
+    color: '#10b981'
 })
 
-let formStyle = style('detailsForm', {
-    display: 'grid',
-    gap: 12
+let playButtonStyle = style('playButton', {
+    border: '1px solid var(--border)',
+    backgroundColor: 'var(--panel)',
+    color: 'var(--text)',
+    padding: '4px 10px',
+    borderRadius: 14,
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    transition: 'all 0.1s',
+    $: {
+        '&:hover': {
+            borderColor: 'var(--accent)',
+            color: 'var(--accent)'
+        }
+    }
 })
 
-let fieldGroupStyle = style('detailsFieldGroup', {
-    display: 'grid',
-    gap: 6
+let compactAudioStyle = style('compactAudio', {
+    height: 32,
+    width: '100%',
+    maxWidth: 200,
+    display: 'inline-block',
+    verticalAlign: 'middle'
 })
 
-let labelStyle = style('detailsLabel', {
+let noAudioTextStyle = style('noAudio', {
+    fontSize: 12,
+    color: 'var(--muted)',
+    fontStyle: 'italic'
+})
+
+let fieldOuterStyle = style('fieldGroup', {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    minWidth: 0
+})
+
+let fieldLabelStyle = style('fieldLabel', {
+    fontSize: 12,
+    fontWeight: 600,
+    color: 'var(--muted)'
+})
+
+let fieldInputStyle = style('fieldInput', {
+    width: '100%',
+    padding: '8px 12px',
+    border: '1px solid var(--border)',
+    borderRadius: 6,
+    fontSize: 13,
+    backgroundColor: 'var(--bg)',
+    color: 'var(--text)',
+    outline: 'none',
+    transition: 'border-color 0.15s',
+    minHeight: 34,
+    $: {
+        '&:hover': {
+            borderColor: 'var(--muted)'
+        },
+        '&:focus': {
+            borderColor: 'var(--accent)'
+        }
+    }
+})
+
+let statusStyle = style('detailsStatus', {
     fontSize: 13,
     color: 'var(--muted)'
 })
 
-let inputStyle = style('detailsInput', {
-    width: '100%',
-    border: '1px solid var(--border)',
-    borderRadius: 8,
-    padding: [10, 12],
-    backgroundColor: 'transparent',
-    color: 'inherit'
-})
-
-let buttonRowStyle = style('detailsButtonRow', {
-    display: 'flex',
-    gap: 8,
-    flexWrap: 'wrap'
-})
-
-let buttonStyle = style('detailsButton', {
-    border: '1px solid var(--border)',
-    borderRadius: 8,
-    padding: [9, 12],
-    backgroundColor: 'transparent',
-    color: 'inherit',
-    cursor: 'pointer'
-})
-
-let primaryButtonStyle = style('detailsPrimaryButton', {
-    backgroundColor: 'var(--accent)',
-    borderColor: 'var(--accent)',
-    color: 'var(--accent-text)'
-})
-
-let dangerButtonStyle = style('detailsDangerButton', {
-    color: 'var(--danger)',
-    borderColor: 'var(--danger)'
-})
-
-let statusStyle = style('detailsStatus', {
-    margin: [4, 0, 0, 0],
-    color: 'var(--muted)'
-})
-
 let errorStyle = style('detailsError', {
-    margin: [6, 0, 0, 0],
+    fontSize: 13,
     color: 'var(--danger)'
-})
-
-let linkStyle = style('detailsLink', {
-    color: 'var(--accent)',
-    textDecoration: 'none',
-    fontSize: 14,
-    overflowWrap: 'anywhere'
-})
-
-let episodesStyle = style('detailsEpisodes', {
-    marginTop: 16,
-    display: 'grid',
-    gap: 8
-})
-
-let episodesHeadingStyle = style('detailsEpisodesHeading', {
-    margin: 0,
-    fontSize: 16
-})
-
-let episodeListStyle = style('detailsEpisodeList', {
-    display: 'grid',
-    gap: 8,
-    maxHeight: 260,
-    overflowY: 'auto'
-})
-
-let episodeCardStyle = style('detailsEpisodeCard', {
-    border: '1px solid var(--border)',
-    borderRadius: 8,
-    padding: 10,
-    backgroundColor: 'transparent'
-})
-
-let episodeTitleStyle = style('detailsEpisodeTitle', {
-    margin: [0, 0, 4, 0],
-    fontSize: 14
-})
-
-let episodeTopRowStyle = style('detailsEpisodeTopRow', {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8
-})
-
-let episodePlayButtonStyle = style('detailsEpisodePlayButton', {
-    marginLeft: 'auto',
-    border: '1px solid var(--border)',
-    borderRadius: 8,
-    width: 34,
-    height: 34,
-    backgroundColor: 'transparent',
-    color: 'inherit',
-    cursor: 'pointer',
-    flexShrink: 0,
-    lineHeight: 1
-})
-
-let episodeMetaStyle = style('detailsEpisodeMeta', {
-    margin: 0,
-    fontSize: 12,
-    color: 'var(--muted)'
-})
-
-let episodeAudioStyle = style('detailsEpisodeAudio', {
-    marginTop: 8,
-    width: '100%'
 })

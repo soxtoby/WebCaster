@@ -130,7 +130,7 @@ export function FeedManagerPage() {
         </header>
 
         <div className={classes(layoutStyle)}>
-            <section className={classes([panelStyle])}>
+            <section className={classes([panelStyle, listPanelStyle])}>
                 <h2 className={classes(panelHeadingStyle)}>Feed list</h2>
                 {isLoading ? <p className={classes(emptyStyle)}>Loading feeds...</p> : null}
                 {isError ? <p className={classes(errorStyle)}>Could not load feeds</p> : null}
@@ -455,38 +455,42 @@ cssRules({
 })
 
 let pageStyle = style('page', {
-    minHeight: '100%',
+    height: '100%',
     display: 'grid',
     gridTemplateRows: 'auto 1fr',
-    gap: 16,
-    padding: 20
+    gap: 12,
+    padding: 14,
+    overflow: 'hidden'
 })
 
 let headerStyle = style('header', {
     display: 'flex',
     alignItems: 'start',
     justifyContent: 'space-between',
-    gap: 12
+    gap: 10
 })
 
 let headingStyle = style('heading', {
     margin: 0,
-    fontSize: 28,
+    fontSize: 24,
     lineHeight: 1.2
 })
 
 let subtitleStyle = style('subtitle', {
-    margin: [6, 0, 0, 0],
+    margin: [4, 0, 0, 0],
+    fontSize: 14,
     color: 'var(--muted)'
 })
 
 let layoutStyle = style('layout', {
     display: 'grid',
     gap: 16,
-    gridTemplateColumns: 'minmax(260px, 360px) minmax(380px, 1fr)',
+    gridTemplateColumns: '300px minmax(0, 1fr)',
+    minHeight: 0,
     $: {
         '@media (max-width: 920px)': {
-            gridTemplateColumns: '1fr'
+            gridTemplateColumns: '1fr',
+            overflow: 'auto'
         }
     }
 })
@@ -494,57 +498,82 @@ let layoutStyle = style('layout', {
 let panelStyle = style('panel', {
     backgroundColor: 'var(--panel)',
     border: '1px solid var(--border)',
-    borderRadius: 12,
-    padding: 16
+    borderRadius: 8,
+    padding: 16,
+    minHeight: 0,
+    boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+})
+
+let listPanelStyle = style('listPanel', {
+    display: 'grid',
+    gridTemplateRows: 'auto auto auto 1fr auto',
+    gap: 12
 })
 
 let panelHeadingStyle = style('panelHeading', {
-    margin: [0, 0, 12, 0],
-    fontSize: 18
+    margin: [0, 0, 4, 0],
+    fontSize: 16,
+    fontWeight: 600
 })
 
 let listStyle = style('feedList', {
     display: 'grid',
-    gap: 8
+    gap: 8,
+    minHeight: 0,
+    overflowY: 'auto',
+    paddingRight: 4
 })
 
 let listActionRowStyle = style('listActionRow', {
-    marginTop: 12
+    marginTop: 8
 })
 
 let feedCardStyle = style('feedCard', {
     width: '100%',
     textAlign: 'left',
     border: '1px solid var(--border)',
-    borderRadius: 10,
-    backgroundColor: 'transparent',
+    borderRadius: 8,
+    backgroundColor: 'var(--bg)',
     color: 'inherit',
-    padding: 12,
-    cursor: 'pointer'
+    padding: 10,
+    cursor: 'pointer',
+    transition: 'border-color 0.15s, background-color 0.15s',
+    $: {
+        '&:hover': {
+            borderColor: 'var(--muted)',
+            backgroundColor: 'var(--panel)'
+        }
+    }
 })
 
 let feedCardSelectedStyle = style('feedCardSelected', {
     borderColor: 'var(--accent)',
-    backgroundColor: 'color-mix(in srgb, var(--accent) 13%, transparent)'
+    backgroundColor: 'color-mix(in srgb, var(--accent) 10%, transparent)',
+    $: {
+        '&:hover': {
+            borderColor: 'var(--accent)',
+            backgroundColor: 'color-mix(in srgb, var(--accent) 15%, transparent)'
+        }
+    }
 })
 
 let feedCardContentStyle = style('feedCardContent', {
     display: 'flex',
-    gap: 12,
+    gap: 10,
     alignItems: 'center'
 })
 
 let feedImageStyle = style('feedImage', {
-    width: 48,
-    height: 48,
+    width: 40,
+    height: 40,
     objectFit: 'cover',
     borderRadius: 6,
     flexShrink: 0
 })
 
 let feedPlaceholderStyle = style('feedPlaceholder', {
-    width: 48,
-    height: 48,
+    width: 40,
+    height: 40,
     borderRadius: 6,
     flexShrink: 0,
     backgroundColor: 'var(--accent)',
@@ -552,7 +581,7 @@ let feedPlaceholderStyle = style('feedPlaceholder', {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: 600
 })
 
@@ -563,14 +592,14 @@ let feedTextStyle = style('feedText', {
 
 let feedNameStyle = style('feedName', {
     margin: 0,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: 650
 })
 
 let feedMetaStyle = style('feedMeta', {
-    margin: [4, 0, 0, 0],
+    margin: [2, 0, 0, 0],
     color: 'var(--muted)',
-    fontSize: 13,
+    fontSize: 12,
     overflowWrap: 'anywhere'
 })
 
@@ -581,17 +610,33 @@ let emptyStyle = style('empty', {
 
 let buttonStyle = style('button', {
     border: '1px solid var(--border)',
-    borderRadius: 8,
-    padding: [9, 12],
-    backgroundColor: 'transparent',
+    borderRadius: 6,
+    padding: '8px 12px',
+    backgroundColor: 'var(--panel)',
     color: 'inherit',
-    cursor: 'pointer'
+    cursor: 'pointer',
+    fontSize: 13,
+    fontWeight: 500,
+    transition: 'border-color 0.15s, background-color 0.15s',
+    $: {
+        '&:hover': {
+            borderColor: 'var(--muted)',
+            backgroundColor: 'var(--bg)'
+        }
+    }
 })
 
 let primaryButtonStyle = style('primaryButton', {
     backgroundColor: 'var(--accent)',
     borderColor: 'var(--accent)',
-    color: 'var(--accent-text)'
+    color: 'var(--accent-text)',
+    border: 'none',
+    $: {
+        '&:hover': {
+            borderColor: 'var(--accent)',
+            backgroundColor: 'color-mix(in srgb, var(--accent) 90%, black)'
+        }
+    }
 })
 
 let errorStyle = style('error', {
