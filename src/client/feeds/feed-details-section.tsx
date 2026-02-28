@@ -50,8 +50,8 @@ export function FeedDetailsSection(props: {
             <div className={classes(headerInfoStyle)}>
                 <h2 className={classes(headerTitleStyle)}>{props.draft.name || (props.isEditing ? 'Unnamed Feed' : 'New Feed')}</h2>
                 {props.isEditing
-                    ? <a className={classes(rssLinkStyle)} href={props.draft.rssUrl} target="_blank" rel="noreferrer">
-                        {props.draft.rssUrl}
+                    ? <a className={classes(rssLinkStyle)} href={props.podcastUrl} target="_blank" rel="noreferrer">
+                        {props.podcastUrl}
                     </a>
                     : null
                 }
