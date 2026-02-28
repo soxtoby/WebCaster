@@ -40,8 +40,14 @@ export function VoiceSelectorField(props: {
             <button
                 className={classes(buttonStyle)}
                 type="button"
+                title="Choose voice"
+                aria-label="Choose voice"
             >
-                Choose voice
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <circle cx="5" cy="12" r="2" />
+                    <circle cx="12" cy="12" r="2" />
+                    <circle cx="19" cy="12" r="2" />
+                </svg>
             </button>
         </div>
         {isOpen
@@ -112,14 +118,15 @@ let inputStyle = style('voiceSelectorInput', {
 let buttonStyle = style('voiceSelectorButton', {
     border: '1px solid var(--border)',
     borderRadius: 6,
-    padding: '8px 12px',
+    padding: '8px',
     minHeight: 34,
+    minWidth: 34,
     backgroundColor: 'var(--panel)',
     color: 'var(--text)',
     cursor: 'pointer',
-    fontSize: 13,
-    fontWeight: 500,
-    whiteSpace: 'nowrap',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     transition: 'border-color 0.15s',
     $: {
         '&:hover': {
