@@ -26,6 +26,7 @@
     "@trpc/client": "^11.10.0",
     "@trpc/server": "^11.10.0",
     "drizzle-orm": "^0.45.1",
+    "fast-xml-parser": "^5.4.1",
     "gender-detection-from-name": "^1.11.4",
     "inworld-tts": "^2.2.0",
     "not-the-systray": "^0.3.1",
