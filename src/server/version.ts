@@ -1,1 +1,2 @@
-export const CURRENT_VERSION = '1.0.0'
+import pkg from "../../package.json"
+export const CURRENT_VERSION = pkg.version
