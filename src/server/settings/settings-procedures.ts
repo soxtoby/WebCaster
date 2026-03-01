@@ -1,4 +1,5 @@
 import { procedure } from "../trpc/trpc"
+import { updatePassword } from "../auth/auth"
 import { getServerBaseUrl, getServerSettings, listProviderSettings, saveProviderSettings, saveServerSettings } from "./settings-repository"
 import { SettingsInput } from "./settings-types"
 
@@ -13,8 +14,16 @@ export const save = procedure
     .mutation(({ input }) => {
         saveProviderSettings(input.settings)
 
+        if (input.server.password)
+            updatePassword(input.server.password)
+
         let previous = getServerSettings()
-        saveServerSettings(input.server)
+        saveServerSettings({
+            hostname: input.server.hostname,
+            port: input.server.port,
+            listenOnAllInterfaces: input.server.listenOnAllInterfaces,
+            passwordConfigured: previous.passwordConfigured
+        })
 
         let changed = previous.hostname != input.server.hostname
             || previous.port != input.server.port

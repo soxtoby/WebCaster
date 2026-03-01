@@ -19,6 +19,8 @@ export type ServerSettingsDraft = {
     hostname: string
     port: string
     listenOnAllInterfaces: boolean
+    password: string
+    passwordConfigured: boolean
 }
 
 type ActiveTab = 'server' | keyof TtsSettingsDraft
@@ -32,6 +34,7 @@ export function SettingsDialog(props: {
     let [error, setError] = useState('')
     let [status, setStatus] = useState('')
     let [isSaving, setIsSaving] = useState(false)
+    let [isLoggingOut, setIsLoggingOut] = useState(false)
     let [draft, setDraft] = useState<TtsSettingsDraft>(createDefaultSettingsDraft())
     let [serverDraft, setServerDraft] = useState<ServerSettingsDraft>(createDefaultServerDraft())
 
@@ -117,6 +120,14 @@ export function SettingsDialog(props: {
             <div className={classes(footerActionsStyle)}>
                 <button
                     className={classes(buttonStyle)}
+                    type="button"
+                    onClick={() => logout()}
+                    disabled={isSaving || isLoggingOut}
+                >
+                    {isLoggingOut ? "Logging out..." : "Log out"}
+                </button>
+                <button
+                    className={classes(buttonStyle)}
                     commandFor={props.id}
                     command="close"
                     type="button"
@@ -153,15 +164,27 @@ export function SettingsDialog(props: {
 
         try {
             setIsSaving(true)
+            let enteredPassword = serverDraft.password.trim()
             let response = await api.settings.save.mutate({
                 settings: draft,
-                server: { hostname: serverDraft.hostname.trim(), port: portNum, listenOnAllInterfaces: serverDraft.listenOnAllInterfaces }
+                server: {
+                    hostname: serverDraft.hostname.trim(),
+                    port: portNum,
+                    listenOnAllInterfaces: serverDraft.listenOnAllInterfaces,
+                    password: enteredPassword
+                }
             })
+
+            if (enteredPassword)
+                await api.auth.login.mutate({ password: enteredPassword })
+
             setDraft(response.settings)
             setServerDraft({
                 hostname: response.server.hostname,
                 port: String(response.server.port ?? 80),
-                listenOnAllInterfaces: response.server.listenOnAllInterfaces
+                listenOnAllInterfaces: response.server.listenOnAllInterfaces,
+                password: '',
+                passwordConfigured: response.server.passwordConfigured
             })
             setStatus('Settings saved')
             dialogRef.current?.close()
@@ -180,9 +203,26 @@ export function SettingsDialog(props: {
             setServerDraft({
                 hostname: response.server.hostname,
                 port: String(response.server.port ?? 80),
-                listenOnAllInterfaces: response.server.listenOnAllInterfaces
+                listenOnAllInterfaces: response.server.listenOnAllInterfaces,
+                password: '',
+                passwordConfigured: response.server.passwordConfigured
             })
         } catch {
+        }
+    }
+
+    async function logout() {
+        setError('')
+        setStatus('')
+
+        try {
+            setIsLoggingOut(true)
+            await api.auth.logout.mutate()
+            window.location.reload()
+        } catch {
+            setError('Could not log out')
+        } finally {
+            setIsLoggingOut(false)
         }
     }
 
@@ -230,7 +270,9 @@ function createDefaultServerDraft(): ServerSettingsDraft {
     return {
         hostname: '',
         port: '80',
-        listenOnAllInterfaces: true
+        listenOnAllInterfaces: true,
+        password: '',
+        passwordConfigured: false
     }
 }
 
@@ -337,6 +379,21 @@ function ServerPanel(props: {
                     onChange={(event: ChangeEvent<HTMLInputElement>) => props.onChange('port', event.target.value)}
                     placeholder="80"
                 />
+            </label>
+
+            <label className={classes(fieldGroupStyle)}>
+                <span className={classes(labelStyle)}>Password</span>
+                <input
+                    className={classes(inputStyle)}
+                    type="password"
+                    value={props.value.password}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => props.onChange('password', event.target.value)}
+                    placeholder={props.value.passwordConfigured ? '••••••••' : 'Set an access password'}
+                    autoComplete="new-password"
+                />
+                <span className={classes(hintStyle)}>
+                    {props.value.passwordConfigured ? 'Leave blank to keep existing password' : 'No password configured'}
+                </span>
             </label>
 
             <label className={classes(toggleLabelStyle)}>

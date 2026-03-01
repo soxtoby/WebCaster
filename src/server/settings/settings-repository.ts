@@ -111,7 +111,8 @@ export function getServerSettings(): ServerSettings {
     return {
         hostname: map.get('server.hostname') || defaultServerSettings.hostname,
         port: portRaw != null ? (parseInt(portRaw, 10) || null) : null,
-        listenOnAllInterfaces: listenRaw != null ? listenRaw == 'true' : defaultServerSettings.listenOnAllInterfaces
+        listenOnAllInterfaces: listenRaw != null ? listenRaw == 'true' : defaultServerSettings.listenOnAllInterfaces,
+        passwordConfigured: map.get('auth.passwordHash') ? true : false
     }
 }
 

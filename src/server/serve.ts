@@ -7,6 +7,7 @@ import { setupNotificationIcon } from "./notification-icon"
 import { getServerBaseUrl, getServerSettings, saveServerSettings } from "./settings/settings-repository"
 import { defaultServerSettings } from "./settings/settings-types"
 import { appRouter } from "./trpc/app-router"
+import { buildTrpcContext } from "./trpc/trpc"
 import { streamVoicePreviewAudio } from "./tts/voice-preview"
 import { startUpdateChecker } from "./updater"
 
@@ -76,7 +77,7 @@ function startServer(hostname: string, port: number) {
                     endpoint: '/api',
                     req: request,
                     router: appRouter,
-                    createContext: () => ({})
+                    createContext: (opts) => buildTrpcContext(opts.req, opts.resHeaders)
                 })
             }
         }
