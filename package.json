@@ -8,7 +8,7 @@
     "start": "bun src/server/index.ts",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "compile": "bun build src/server/index.ts drizzle/**/*.sql --compile --outfile out/WebCaster.exe --target=bun-windows-x64 --windows-icon=src/server/icon.ico --title=WebCaster --asset-naming=[name].[ext]"
+    "compile": "bun compile.ts"
   },
   "devDependencies": {
     "@types/bun": "^1.3.9",
