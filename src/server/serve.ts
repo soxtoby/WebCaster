@@ -1,44 +1,22 @@
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch"
-import { serve } from "bun"
-import { createServer } from "net"
+import { serve, type Server } from "bun"
 import index from "../client/index.html"
-import { buildPodcastFeedXml, getFeedByPodcastSlug, startFeedPolling, streamEpisodeAudio } from "./feeds/feed-podcast"
-import { setupNotificationIcon } from "./notification-icon"
-import { getServerBaseUrl, getServerSettings, saveServerSettings } from "./settings/settings-repository"
-import { defaultServerSettings } from "./settings/settings-types"
+import { buildPodcastFeedXml, getFeedByPodcastSlug, streamEpisodeAudio } from "./feeds/feed-podcast"
+import { getServerBaseUrl } from "./settings/settings-repository"
 import { appRouter } from "./trpc/app-router"
 import { buildTrpcContext } from "./trpc/trpc"
 import { streamVoicePreviewAudio } from "./tts/voice-preview"
-import { startUpdateChecker } from "./updater"
 
-let settings = getServerSettings()
+let server: Server<undefined>
 
-if (settings.port == null) {
-    settings.port = await findFreePort()
-    saveServerSettings(settings)
+export function restartServer(hostname: string, port: number) {
+    server?.stop()
+    let url = startServer(hostname, port)
+    console.log(`🔄 Server restarted at ${url} (${getServerBaseUrl()})`)
 }
 
-let server = startServer(
-    settings.listenOnAllInterfaces ? '0.0.0.0' : settings.hostname,
-    settings.port
-)
-
-console.log(`🚀 Server running at ${server.url} (${getServerBaseUrl()})`)
-
-startFeedPolling()
-
-await setupNotificationIcon()
-
-startUpdateChecker()
-
-export function restartServer(listenAddr: string, port: number) {
-    server.stop()
-    server = startServer(listenAddr, port)
-    console.log(`🔄 Server restarted at ${server.url} (${getServerBaseUrl()})`)
-}
-
-function startServer(hostname: string, port: number) {
-    return serve({
+export function startServer(hostname: string, port: number) {
+    server ??= serve({
         development: true,
         hostname,
         port,
@@ -82,26 +60,6 @@ function startServer(hostname: string, port: number) {
             }
         }
     })
-}
 
-async function findFreePort(): Promise<number> {
-    if (await isPortAvailable(defaultServerSettings.port))
-        return defaultServerSettings.port
-
-    for (let port = 1100; port <= 65535; port++) {
-        if (await isPortAvailable(port))
-            return port
-    }
-
-    throw new Error('No free port found')
-}
-
-function isPortAvailable(port: number): Promise<boolean> {
-    return new Promise(resolve => {
-        let srv = createServer()
-        srv.once('error', () => resolve(false))
-        srv.listen(port, '0.0.0.0', () => {
-            srv.close(() => resolve(true))
-        })
-    })
+    return server.url
 }

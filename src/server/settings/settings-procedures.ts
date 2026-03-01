@@ -1,5 +1,6 @@
-import { procedure } from "../trpc/trpc"
 import { updatePassword } from "../auth/auth"
+import { restartServer } from "../serve"
+import { procedure } from "../trpc/trpc"
 import { getServerBaseUrl, getServerSettings, listProviderSettings, saveProviderSettings, saveServerSettings } from "./settings-repository"
 import { SettingsInput } from "./settings-types"
 
@@ -34,7 +35,6 @@ export const save = procedure
             redirectUrl = getServerBaseUrl()
             let listenAddress = input.server.listenOnAllInterfaces ? '0.0.0.0' : input.server.hostname
 
-            let { restartServer } = require("../serve") as typeof import("../serve")
             setTimeout(() => restartServer(listenAddress, input.server.port), 500)
         }
 
