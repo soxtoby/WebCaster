@@ -14,21 +14,31 @@ export type TtsSettingsDraft = {
     lemonfox: ProviderSettingsDraft
 }
 
+export type ServerSettingsDraft = {
+    hostname: string
+    port: string
+    listenOnAllInterfaces: boolean
+}
+
+type ActiveTab = 'server' | keyof TtsSettingsDraft
+
 export function TtsSettingsModal(props: {
     draft: TtsSettingsDraft
+    serverDraft: ServerSettingsDraft
     error: string
     isOpen: boolean
     isSaving: boolean
     onChange: (provider: keyof TtsSettingsDraft, field: keyof ProviderSettingsDraft, value: string | boolean) => void
+    onServerChange: (field: keyof ServerSettingsDraft, value: string | boolean) => void
     onClose: () => void
     onSave: () => void
     status: string
 }) {
     if (!props.isOpen) return null
 
-    let [activeTab, setActiveTab] = useState<keyof TtsSettingsDraft>('elevenlabs')
+    let [activeTab, setActiveTab] = useState<ActiveTab>('server')
 
-    let tabs: Array<{ id: keyof TtsSettingsDraft, label: string }> = [
+    let ttsTabs: Array<{ id: keyof TtsSettingsDraft, label: string }> = [
         { id: 'elevenlabs', label: 'ElevenLabs' },
         { id: 'inworld', label: 'Inworld' },
         { id: 'lemonfox', label: 'Lemonfox' },
@@ -38,7 +48,7 @@ export function TtsSettingsModal(props: {
     return <div className={classes(overlayStyle)}>
         <div className={classes(dialogContainerStyle)}>
             <div className={classes(headerStyle)}>
-                <h2 className={classes(headingStyle)}>TTS Providers</h2>
+                <h2 className={classes(headingStyle)}>Settings</h2>
                 <button
                     className={classes(closeButtonStyle)}
                     onClick={props.onClose}
@@ -50,7 +60,15 @@ export function TtsSettingsModal(props: {
             <div className={classes(layoutStyle)}>
                 <div className={classes(sidebarStyle)}>
                     <div className={classes(tabsContainerStyle)}>
-                        {tabs.map(tab => {
+                        <button
+                            type="button"
+                            className={classes([tabButtonStyle, activeTab == 'server' && activeTabButtonStyle])}
+                            onClick={() => setActiveTab('server')}
+                        >
+                            <span>Server</span>
+                        </button>
+                        <div className={classes(tabDividerStyle)} />
+                        {ttsTabs.map(tab => {
                             let isEnabled = props.draft[tab.id].enabled
                             return (
                                 <button
@@ -68,12 +86,17 @@ export function TtsSettingsModal(props: {
                 </div>
 
                 <div className={classes(contentStyle)}>
-                    <ProviderPanel
-                        title={tabs.find(t => t.id === activeTab)?.label || ''}
-                        provider={activeTab}
-                        value={props.draft[activeTab]}
-                        onChange={props.onChange}
-                    />
+                    {activeTab == 'server'
+                        ? <ServerPanel
+                            value={props.serverDraft}
+                            onChange={props.onServerChange}
+                        />
+                        : <ProviderPanel
+                            title={ttsTabs.find(t => t.id === activeTab)?.label || ''}
+                            provider={activeTab}
+                            value={props.draft[activeTab]}
+                            onChange={props.onChange}
+                        />}
                 </div>
             </div>
 
@@ -151,6 +174,60 @@ function ProviderPanel(props: {
                     placeholder="https://api.example.com"
                 />
             </label>
+        </div>
+    </div>
+}
+
+function ServerPanel(props: {
+    value: ServerSettingsDraft
+    onChange: (field: keyof ServerSettingsDraft, value: string | boolean) => void
+}) {
+    return <div className={classes(panelContainerStyle)}>
+        <div className={classes(panelHeaderStyle)}>
+            <h3 className={classes(panelTitleStyle)}>Server Configuration</h3>
+        </div>
+
+        <div className={classes(fieldsGridStyle)}>
+            <label className={classes(fieldGroupStyle)}>
+                <span className={classes(labelStyle)}>Address</span>
+                <input
+                    className={classes(inputStyle)}
+                    type="text"
+                    value={props.value.hostname}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => props.onChange('hostname', event.target.value)}
+                    placeholder="my-machine"
+                />
+                <span className={classes(hintStyle)}>Hostname or IP used in podcast and episode URLs</span>
+            </label>
+
+            <label className={classes(fieldGroupStyle)}>
+                <span className={classes(labelStyle)}>Port</span>
+                <input
+                    className={classes(inputStyle)}
+                    type="number"
+                    min="1"
+                    max="65535"
+                    value={props.value.port}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => props.onChange('port', event.target.value)}
+                    placeholder="80"
+                />
+            </label>
+
+            <label className={classes(toggleLabelStyle)}>
+                <input
+                    type="checkbox"
+                    className={classes(hiddenCheckboxStyle)}
+                    checked={props.value.listenOnAllInterfaces}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => props.onChange('listenOnAllInterfaces', event.target.checked)}
+                />
+                <div className={classes([toggleTrackStyle, props.value.listenOnAllInterfaces && activeToggleTrackStyle])}>
+                    <div className={classes([toggleThumbStyle, props.value.listenOnAllInterfaces && activeToggleThumbStyle])} />
+                </div>
+                <span className={classes(toggleTextContainerStyle)}>Listen on all interfaces</span>
+            </label>
+            <span className={classes(hintStyle)}>When off, the server only accepts connections to the address above</span>
+
+            <span className={classes(hintStyle)}>Changing these settings will restart the server</span>
         </div>
     </div>
 }
@@ -254,6 +331,12 @@ let tabsContainerStyle = style('settingsTabs', {
             flexDirection: 'row'
         }
     }
+})
+
+let tabDividerStyle = style('tabDivider', {
+    height: 1,
+    backgroundColor: 'var(--border)',
+    margin: '4px 8px'
 })
 
 let tabButtonStyle = style('tabButton', {
@@ -389,6 +472,12 @@ let toggleTextStyle = style('toggleText', {
     width: '60px' // Keep width fixed so it doesn't jump
 })
 
+let toggleTextContainerStyle = style('toggleTextContainer', {
+    fontSize: 13,
+    fontWeight: 500,
+    color: 'var(--muted)'
+})
+
 let fieldsGridStyle = style('fieldsGrid', {
     display: 'flex',
     flexDirection: 'column',
@@ -405,6 +494,12 @@ let labelStyle = style('label', {
     fontSize: 12,
     fontWeight: 600,
     color: 'var(--muted)'
+})
+
+let hintStyle = style('hint', {
+    fontSize: 11,
+    color: 'var(--muted)',
+    opacity: 0.8
 })
 
 let inputStyle = style('input', {

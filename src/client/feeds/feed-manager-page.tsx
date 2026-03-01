@@ -5,7 +5,7 @@ import { api } from "../api"
 import icon from "../icon.svg"
 import { feedCollection } from "./feed-collections"
 import { FeedDetailsSection } from "./feed-details-section"
-import { TtsSettingsModal, type ProviderSettingsDraft, type TtsSettingsDraft } from "./tts-settings-modal"
+import { TtsSettingsModal, type ProviderSettingsDraft, type TtsSettingsDraft, type ServerSettingsDraft } from "./tts-settings-modal"
 import { type VoiceOption } from "./voice-selector-field"
 
 type FeedDraft = {
@@ -44,6 +44,7 @@ export function FeedManagerPage() {
     let [settingsStatus, setSettingsStatus] = useState('')
     let [settingsError, setSettingsError] = useState('')
     let [isSavingSettings, setIsSavingSettings] = useState(false)
+    let [serverDraft, setServerDraft] = useState<ServerSettingsDraft>({ hostname: '', port: '80', listenOnAllInterfaces: true })
 
     let { data: feeds = [], isLoading, isError } = useLiveQuery(q => q.from({ feedCollection }))
 
@@ -126,7 +127,7 @@ export function FeedManagerPage() {
                 }}
                 type="button"
             >
-                TTS settings
+                Settings
             </button>
         </header>
 
@@ -216,6 +217,7 @@ export function FeedManagerPage() {
 
         <TtsSettingsModal
             draft={settingsDraft}
+            serverDraft={serverDraft}
             error={settingsError}
             isOpen={isSettingsOpen}
             isSaving={isSavingSettings}
@@ -227,6 +229,9 @@ export function FeedManagerPage() {
                         [field]: value
                     }
                 }))
+            }}
+            onServerChange={(field, value) => {
+                setServerDraft(current => ({ ...current, [field]: value }))
             }}
             onClose={() => setIsSettingsOpen(false)}
             onSave={() => {
@@ -329,9 +334,14 @@ export function FeedManagerPage() {
         try {
             let response = await api.settings.get.query()
             setSettingsDraft(response.settings)
+            setServerDraft({
+                hostname: response.server.hostname,
+                port: String(response.server.port),
+                listenOnAllInterfaces: response.server.listenOnAllInterfaces
+            })
         }
         catch {
-            setSettingsError('Could not load TTS settings')
+            setSettingsError('Could not load settings')
         }
     }
 
@@ -345,16 +355,36 @@ export function FeedManagerPage() {
             return
         }
 
+        let portNum = parseInt(serverDraft.port, 10)
+        if (!portNum || portNum < 1 || portNum > 65535) {
+            setSettingsError('Port must be between 1 and 65535')
+            return
+        }
+
         try {
             setIsSavingSettings(true)
-            let response = await api.settings.save.mutate({ settings: settingsDraft })
+            let response = await api.settings.save.mutate({
+                settings: settingsDraft,
+                server: { hostname: serverDraft.hostname.trim(), port: portNum, listenOnAllInterfaces: serverDraft.listenOnAllInterfaces }
+            })
             setSettingsDraft(response.settings)
+            setServerDraft({
+                hostname: response.server.hostname,
+                port: String(response.server.port),
+                listenOnAllInterfaces: response.server.listenOnAllInterfaces
+            })
             setSettingsStatus('Settings saved')
             await loadVoices()
             setIsSettingsOpen(false)
+
+            if (response.redirectUrl) {
+                setTimeout(() => {
+                    window.location.href = response.redirectUrl!
+                }, 1000)
+            }
         }
         catch {
-            setSettingsError('Could not save TTS settings')
+            setSettingsError('Could not save settings')
         }
         finally {
             setIsSavingSettings(false)

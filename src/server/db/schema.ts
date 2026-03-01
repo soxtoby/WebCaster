@@ -1,6 +1,13 @@
 import { sql, type InferSelectModel } from "drizzle-orm"
 import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 
+export type AppSetting = InferSelectModel<typeof appSettingsTable>
+export const appSettingsTable = sqliteTable('app_settings', {
+    key: text('key').primaryKey(),
+    value: text('value').notNull().default(''),
+    updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`)
+})
+
 export type TtsProviderSetting = InferSelectModel<typeof ttsProviderSettingsTable>
 export const ttsProviderSettingsTable = sqliteTable('tts_provider_settings', {
     providerType: text('provider_type').primaryKey(),

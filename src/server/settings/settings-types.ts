@@ -1,4 +1,5 @@
-import { boolean, check, object, pipe, string, trim, type InferOutput } from "valibot"
+import { hostname as osHostname } from "os"
+import { boolean, check, number, object, pipe, string, trim, type InferOutput } from "valibot"
 
 export let ttsProviders = ['inworld', 'openai', 'elevenlabs', 'lemonfox'] as const
 export type TtsProvider = (typeof ttsProviders)[number]
@@ -17,6 +18,18 @@ let ProviderSettingsInput = object({
     baseUrl: pipe(string(), trim())
 })
 
+export type ServerSettings = {
+    hostname: string
+    port: number | null
+    listenOnAllInterfaces: boolean
+}
+
+export let defaultServerSettings = {
+    hostname: osHostname(),
+    port: 80,
+    listenOnAllInterfaces: true
+} as const satisfies ServerSettings
+
 export type SettingsInput = InferOutput<typeof SettingsInput>
 export const SettingsInput = object({
     settings: object({
@@ -24,6 +37,14 @@ export const SettingsInput = object({
         openai: ProviderSettingsInput,
         elevenlabs: ProviderSettingsInput,
         lemonfox: ProviderSettingsInput
+    }),
+    server: object({
+        hostname: pipe(string(), trim()),
+        port: pipe(
+            number('Port must be a number'),
+            check(v => Number.isInteger(v) && v >= 1 && v <= 65535, 'Port must be between 1 and 65535')
+        ),
+        listenOnAllInterfaces: boolean()
     })
 })
 

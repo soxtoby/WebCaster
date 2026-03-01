@@ -3,11 +3,12 @@ import open from "open"
 import embeddedIcon from "./icon.ico" with { type: "file" }
 import { file } from "bun"
 import { iconPath } from "./paths"
+import { getServerBaseUrl } from "./settings/settings-repository"
 
 let notifyIcon: NotifyIcon | null = null
 let pendingUpdate: { version: string; restart: () => void } | null = null
 
-export async function setupNotificationIcon(serverUrl: string) {
+export async function setupNotificationIcon() {
     if (process.platform == 'win32') {
         let iconFile = file(iconPath)
         await iconFile.write(file(embeddedIcon))
@@ -32,7 +33,7 @@ export async function setupNotificationIcon(serverUrl: string) {
                     let selectedId = await new Menu(items).show(event.mouseX, event.mouseY)
 
                     if (selectedId == 1)
-                        open(serverUrl)
+                        open(getServerBaseUrl())
 
                     if (selectedId == 2)
                         quitApp()
@@ -40,7 +41,7 @@ export async function setupNotificationIcon(serverUrl: string) {
                     if (selectedId == 3 && pendingUpdate)
                         pendingUpdate.restart()
                 } else {
-                    open(serverUrl)
+                    open(getServerBaseUrl())
                 }
             }
         })

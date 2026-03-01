@@ -1,11 +1,11 @@
 import { asc, eq, sql } from "drizzle-orm"
 import { database } from "../db"
-import { ttsProviderSettingsTable, ttsVoicesTable } from "../db/schema"
+import { appSettingsTable, ttsProviderSettingsTable, ttsVoicesTable } from "../db/schema"
 import { elevenLabsDefaults } from "../tts/elevenlabs"
 import { inworldDefaults } from "../tts/inworld"
 import { lemonFoxDefaults } from "../tts/lemonfox"
 import { openAiDefaults } from "../tts/openai"
-import { ttsProviders, type TtsProvider, type SettingsState, type VoiceRecord } from "./settings-types"
+import { defaultServerSettings, ttsProviders, type ServerSettings, type SettingsState, type TtsProvider, type VoiceRecord } from "./settings-types"
 
 export function listProviderSettings(): SettingsState {
     let rows = database.select().from(ttsProviderSettingsTable).all()
@@ -93,6 +93,54 @@ export function replaceProviderVoices(providerType: TtsProvider, voices: VoiceRe
             gender: voice.gender
         })))
         .run()
+}
+
+let cachedBaseUrl: string | null = null
+
+export function getServerBaseUrl(): string {
+    return (cachedBaseUrl ??= baseUrl(getServerSettings()))
+}
+
+export function getServerSettings(): ServerSettings {
+    let rows = database.select().from(appSettingsTable).all()
+    let map = new Map(rows.map(r => [r.key, r.value]))
+
+    let listenRaw = map.get('server.listenOnAllInterfaces')
+    let portRaw = map.get('server.port')
+
+    return {
+        hostname: map.get('server.hostname') || defaultServerSettings.hostname,
+        port: portRaw != null ? (parseInt(portRaw, 10) || null) : null,
+        listenOnAllInterfaces: listenRaw != null ? listenRaw == 'true' : defaultServerSettings.listenOnAllInterfaces
+    }
+}
+
+export function saveServerSettings(settings: ServerSettings) {
+    let entries: Array<{ key: string, value: string }> = [
+        { key: 'server.hostname', value: settings.hostname },
+        { key: 'server.port', value: String(settings.port) },
+        { key: 'server.listenOnAllInterfaces', value: String(settings.listenOnAllInterfaces) }
+    ]
+
+    for (let entry of entries) {
+        database
+            .insert(appSettingsTable)
+            .values({ key: entry.key, value: entry.value })
+            .onConflictDoUpdate({
+                target: appSettingsTable.key,
+                set: {
+                    value: entry.value,
+                    updatedAt: sql`CURRENT_TIMESTAMP`
+                }
+            })
+            .run()
+    }
+
+    cachedBaseUrl = baseUrl(settings)
+}
+
+function baseUrl(settings: ServerSettings) {
+    return `http://${settings.hostname}:${settings.port}`
 }
 
 function createDefaultSettings(): SettingsState {

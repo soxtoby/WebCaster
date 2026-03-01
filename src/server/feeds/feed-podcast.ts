@@ -3,7 +3,7 @@ import { mkdir } from "node:fs/promises"
 import { database } from "../db"
 import { articlesTable, feedsTable, type Article, type Feed } from "../db/schema"
 import { episodePath, podcastDirectory } from "../paths"
-import { getCachedVoiceById, listProviderSettings } from "../settings/settings-repository"
+import { getCachedVoiceById, getServerBaseUrl, listProviderSettings } from "../settings/settings-repository"
 import { type TtsProvider } from "../settings/settings-types"
 import { streamSpeech, type StreamedAudio } from "../tts/tts"
 import { fetchFeed, type ParsedFeedArticle } from "./feed-parsing"
@@ -21,23 +21,23 @@ type EpisodeView = {
 
 let pollerStarted = false
 
-export function startFeedPolling(serverBaseUrl: string) {
+export function startFeedPolling() {
     if (pollerStarted)
         return
 
     pollerStarted = true
-    void syncAllFeeds(serverBaseUrl, 20)
+    void syncAllFeeds(20)
     setInterval(() => {
-        void syncAllFeeds(serverBaseUrl, 20)
+        void syncAllFeeds(20)
     }, 10 * 60 * 1000)
 }
 
-export async function syncFeedById(feedId: number, serverBaseUrl: string, limit = 20) {
+export async function syncFeedById(feedId: number, limit = 20) {
     let feed = database.select().from(feedsTable).where(eq(feedsTable.id, feedId)).get()
     if (!feed)
         return
 
-    await syncFeed(feed, serverBaseUrl, limit)
+    await syncFeed(feed, limit)
 }
 
 export async function getFeedByPodcastSlug(slug: string) {
@@ -79,8 +79,8 @@ export async function listFeedEpisodes(feedId: number): Promise<EpisodeView[]> {
     }))
 }
 
-export async function buildPodcastFeedXml(feed: Feed, serverBaseUrl: string) {
-    await syncFeed(feed, serverBaseUrl, 20)
+export async function buildPodcastFeedXml(feed: Feed) {
+    await syncFeed(feed, 20)
 
     let episodes = database
         .select()
@@ -92,12 +92,12 @@ export async function buildPodcastFeedXml(feed: Feed, serverBaseUrl: string) {
     let safeTitle = escapeXml(feed.name)
     let safeDescription = escapeXml(feed.description || '')
     let channelImage = feed.imageUrl ? `<image><url>${escapeXml(feed.imageUrl)}</url><title>${safeTitle}</title><link>${escapeXml(feed.rssUrl)}</link></image>` : ''
-    let items = episodes.map(episode => buildRssItem(feed, episode, serverBaseUrl)).join('')
+    let items = episodes.map(episode => buildRssItem(feed, episode)).join('')
 
     return `<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0">\n<channel>\n<title>${safeTitle}</title>\n<link>${escapeXml(feed.rssUrl)}</link>\n<description>${safeDescription}</description>\n${channelImage}\n${items}\n</channel>\n</rss>`
 }
 
-export async function streamEpisodeAudio(feed: Feed, episodeKey: string, serverBaseUrl: string): Promise<Response> {
+export async function streamEpisodeAudio(feed: Feed, episodeKey: string): Promise<Response> {
     let article = findArticleByEpisodeKey(feed.id, episodeKey)
 
     if (!article)
@@ -119,7 +119,7 @@ export async function streamEpisodeAudio(feed: Feed, episodeKey: string, serverB
 
     markArticleGenerating(feed.id, article.episodeKey, feed)
     let [toClient, toDisk] = generated.stream.tee()
-    void persistAudioStream(toDisk, resolvedPath, article, feed, serverBaseUrl)
+    void persistAudioStream(toDisk, resolvedPath, article, feed)
 
     return new Response(toClient, {
         headers: {
@@ -129,10 +129,10 @@ export async function streamEpisodeAudio(feed: Feed, episodeKey: string, serverB
     })
 }
 
-async function syncAllFeeds(serverBaseUrl: string, limit: number) {
+async function syncAllFeeds(limit: number) {
     let feeds = database.select().from(feedsTable).all()
     for (let feed of feeds)
-        await syncFeed(feed, serverBaseUrl, limit)
+        await syncFeed(feed, limit)
 }
 
 export function insertFeedArticles(feedId: number, generationMode: string, contentSource: string, articles: ParsedFeedArticle[], limit = 20) {
@@ -160,7 +160,7 @@ export function insertFeedArticles(feedId: number, generationMode: string, conte
     }
 }
 
-async function syncFeed(feed: Feed, serverBaseUrl: string, limit: number) {
+async function syncFeed(feed: Feed, limit: number) {
     let parsed = await fetchFeed(feed.rssUrl)
     if (!parsed)
         return
@@ -179,15 +179,15 @@ async function syncFeed(feed: Feed, serverBaseUrl: string, limit: number) {
             .all()
 
         for (let article of pending)
-            await generateAndStoreAudio(feed, article, serverBaseUrl)
+            await generateAndStoreAudio(feed, article)
     }
 }
 
-async function generateAndStoreAudio(feed: Feed, article: Article, serverBaseUrl: string) {
+async function generateAndStoreAudio(feed: Feed, article: Article) {
     let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
     let file = Bun.file(resolvedPath)
     if (await file.exists()) {
-        markArticleReady(feed.id, article.episodeKey, buildAudioUrl(feed, article, serverBaseUrl))
+        markArticleReady(feed.id, article.episodeKey, buildAudioUrl(feed, article))
         return
     }
 
@@ -197,7 +197,7 @@ async function generateAndStoreAudio(feed: Feed, article: Article, serverBaseUrl
     markArticleGenerating(feed.id, article.episodeKey, feed)
     try {
         let generated = await createAudioStream(feed, article)
-        await persistAudioStream(generated.stream, resolvedPath, article, feed, serverBaseUrl)
+        await persistAudioStream(generated.stream, resolvedPath, article, feed)
     } catch (error) {
         let message = error instanceof Error ? error.message : 'Audio generation failed'
         markArticleFailed(feed.id, article.episodeKey, message)
@@ -224,11 +224,11 @@ function isTtsProvider(value: string): value is TtsProvider {
     return value == 'inworld' || value == 'openai' || value == 'elevenlabs' || value == 'lemonfox'
 }
 
-async function persistAudioStream(stream: ReadableStream<Uint8Array>, outputPath: string, article: Article, feed: Feed, serverBaseUrl: string) {
+async function persistAudioStream(stream: ReadableStream<Uint8Array>, outputPath: string, article: Article, feed: Feed) {
     try {
         await mkdir(podcastDirectory(feed.podcastSlug), { recursive: true })
         await writeStreamToFile(stream, outputPath)
-        markArticleReady(feed.id, article.episodeKey, buildAudioUrl(feed, article, serverBaseUrl))
+        markArticleReady(feed.id, article.episodeKey, buildAudioUrl(feed, article))
     }
     catch {
         markArticleFailed(feed.id, article.episodeKey, 'Failed to store generated audio')
@@ -373,8 +373,8 @@ function ensureStoredEpisodeKey(article: Article, episodeKey: string) {
     return article
 }
 
-function buildRssItem(feed: Feed, article: Article, serverBaseUrl: string) {
-    let enclosureUrl = buildAudioUrl(feed, article, serverBaseUrl)
+function buildRssItem(feed: Feed, article: Article) {
+    let enclosureUrl = buildAudioUrl(feed, article)
     let guid = article.sourceUrl || article.guid || enclosureUrl
     let published = article.publishedAt ? `<pubDate>${new Date(article.publishedAt).toUTCString()}</pubDate>` : ''
     let description = escapeXml(article.summary || '')
@@ -392,9 +392,9 @@ function escapeXml(value: string) {
         .replace(/'/g, '&apos;')
 }
 
-function buildAudioUrl(feed: Feed, article: Pick<Article, 'episodeKey' | 'title' | 'sourceUrl'>, serverBaseUrl: string) {
+function buildAudioUrl(feed: Feed, article: Pick<Article, 'episodeKey' | 'title' | 'sourceUrl'>) {
     let episodeKey = resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl)
-    return `${serverBaseUrl.replace(/\/+$/, '')}/feed/${feed.podcastSlug}/${episodeKey}`
+    return `${getServerBaseUrl()}/feed/${feed.podcastSlug}/${episodeKey}`
 }
 
 function findArticleByEpisodeKey(feedId: number, episodeKey: string) {
