@@ -26,13 +26,13 @@ export function TtsSettingsModal(props: {
 }) {
     if (!props.isOpen) return null
 
-    let [activeTab, setActiveTab] = useState<keyof TtsSettingsDraft>('inworld')
+    let [activeTab, setActiveTab] = useState<keyof TtsSettingsDraft>('elevenlabs')
 
     let tabs: Array<{ id: keyof TtsSettingsDraft, label: string }> = [
-        { id: 'inworld', label: 'Inworld' },
-        { id: 'openai', label: 'OpenAI' },
         { id: 'elevenlabs', label: 'ElevenLabs' },
-        { id: 'lemonfox', label: 'Lemonfox' }
+        { id: 'inworld', label: 'Inworld' },
+        { id: 'lemonfox', label: 'Lemonfox' },
+        { id: 'openai', label: 'OpenAI' }
     ]
 
     return <div className={classes(overlayStyle)}>
