@@ -1,5 +1,6 @@
-import { type ChangeEvent, useState } from "react"
+import { type ChangeEvent, useEffect, useRef, useState } from "react"
 import { classes, style } from "stylemap"
+import { api } from "../api"
 
 export type ProviderSettingsDraft = {
     enabled: boolean
@@ -22,21 +23,21 @@ export type ServerSettingsDraft = {
 
 type ActiveTab = 'server' | keyof TtsSettingsDraft
 
-export function TtsSettingsModal(props: {
-    draft: TtsSettingsDraft
-    serverDraft: ServerSettingsDraft
-    error: string
-    isOpen: boolean
-    isSaving: boolean
-    onChange: (provider: keyof TtsSettingsDraft, field: keyof ProviderSettingsDraft, value: string | boolean) => void
-    onServerChange: (field: keyof ServerSettingsDraft, value: string | boolean) => void
-    onClose: () => void
-    onSave: () => void
-    status: string
+export function SettingsDialog(props: {
+    id: string
+    onSaved: (result: { redirectUrl?: string }) => void
 }) {
-    if (!props.isOpen) return null
-
+    let dialogRef = useRef<HTMLDialogElement>(null)
     let [activeTab, setActiveTab] = useState<ActiveTab>('server')
+    let [error, setError] = useState('')
+    let [status, setStatus] = useState('')
+    let [isSaving, setIsSaving] = useState(false)
+    let [draft, setDraft] = useState<TtsSettingsDraft>(createDefaultSettingsDraft())
+    let [serverDraft, setServerDraft] = useState<ServerSettingsDraft>(createDefaultServerDraft())
+
+    useEffect(() => {
+        void loadSettings()
+    }, [])
 
     let ttsTabs: Array<{ id: keyof TtsSettingsDraft, label: string }> = [
         { id: 'elevenlabs', label: 'ElevenLabs' },
@@ -45,86 +46,188 @@ export function TtsSettingsModal(props: {
         { id: 'openai', label: 'OpenAI' }
     ]
 
-    return <div className={classes(overlayStyle)}>
-        <div className={classes(dialogContainerStyle)}>
-            <div className={classes(headerStyle)}>
-                <h2 className={classes(headingStyle)}>Settings</h2>
-                <button
-                    className={classes(closeButtonStyle)}
-                    onClick={props.onClose}
-                    type="button"
-                    aria-label="Close"
-                >×</button>
-            </div>
+    return <dialog
+        id={props.id}
+        ref={dialogRef}
+        className={classes(dialogContainerStyle)}
+    >
+        <div className={classes(headerStyle)}>
+            <h2 className={classes(headingStyle)}>Settings</h2>
+            <button
+                className={classes(closeButtonStyle)}
+                commandFor={props.id}
+                command="close"
+                type="button"
+                aria-label="Close"
+            >×</button>
+        </div>
 
-            <div className={classes(layoutStyle)}>
-                <div className={classes(sidebarStyle)}>
-                    <div className={classes(tabsContainerStyle)}>
-                        <button
-                            type="button"
-                            className={classes([tabButtonStyle, activeTab == 'server' && activeTabButtonStyle])}
-                            onClick={() => setActiveTab('server')}
-                        >
-                            <span>Server</span>
-                        </button>
-                        <div className={classes(tabDividerStyle)} />
-                        {ttsTabs.map(tab => {
-                            let isEnabled = props.draft[tab.id].enabled
-                            return (
-                                <button
-                                    key={tab.id}
-                                    type="button"
-                                    className={classes([tabButtonStyle, activeTab === tab.id && activeTabButtonStyle])}
-                                    onClick={() => setActiveTab(tab.id)}
-                                >
-                                    <div className={classes([statusDotStyle, isEnabled && activeDotStyle])} title={isEnabled ? "Enabled" : "Disabled"} />
-                                    <span>{tab.label}</span>
-                                </button>
-                            )
-                        })}
-                    </div>
-                </div>
-
-                <div className={classes(contentStyle)}>
-                    {activeTab == 'server'
-                        ? <ServerPanel
-                            value={props.serverDraft}
-                            onChange={props.onServerChange}
-                        />
-                        : <ProviderPanel
-                            title={ttsTabs.find(t => t.id === activeTab)?.label || ''}
-                            provider={activeTab}
-                            value={props.draft[activeTab]}
-                            onChange={props.onChange}
-                        />}
+        <div className={classes(layoutStyle)}>
+            <div className={classes(sidebarStyle)}>
+                <div className={classes(tabsContainerStyle)}>
+                    <button
+                        type="button"
+                        className={classes([tabButtonStyle, activeTab == 'server' && activeTabButtonStyle])}
+                        onClick={() => setActiveTab('server')}
+                    >
+                        <span>Server</span>
+                    </button>
+                    <div className={classes(tabDividerStyle)} />
+                    {ttsTabs.map(tab => {
+                        let isEnabled = draft[tab.id].enabled
+                        return (
+                            <button
+                                key={tab.id}
+                                type="button"
+                                className={classes([tabButtonStyle, activeTab === tab.id && activeTabButtonStyle])}
+                                onClick={() => setActiveTab(tab.id)}
+                            >
+                                <div className={classes([statusDotStyle, isEnabled && activeDotStyle])} title={isEnabled ? "Enabled" : "Disabled"} />
+                                <span>{tab.label}</span>
+                            </button>
+                        )
+                    })}
                 </div>
             </div>
 
-            <div className={classes(footerStyle)}>
-                <div className={classes(statusAreaStyle)}>
-                    {props.error ? <span className={classes(errorStyle)}>{props.error}</span> : null}
-                    {props.status ? <span className={classes(statusStyle)}>{props.status}</span> : null}
-                </div>
-                <div className={classes(footerActionsStyle)}>
-                    <button
-                        className={classes(buttonStyle)}
-                        type="button"
-                        onClick={props.onClose}
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        className={classes([buttonStyle, primaryButtonStyle])}
-                        type="button"
-                        onClick={() => props.onSave()}
-                        disabled={props.isSaving}
-                    >
-                        {props.isSaving ? "Saving..." : "Save settings"}
-                    </button>
-                </div>
+            <div className={classes(contentStyle)}>
+                {activeTab == 'server'
+                    ? <ServerPanel
+                        value={serverDraft}
+                        onChange={onServerDraftChange}
+                    />
+                    : <ProviderPanel
+                        title={ttsTabs.find(t => t.id === activeTab)?.label || ''}
+                        provider={activeTab}
+                        value={draft[activeTab]}
+                        onChange={onProviderDraftChange}
+                    />}
             </div>
         </div>
-    </div>
+
+        <div className={classes(footerStyle)}>
+            <div className={classes(statusAreaStyle)}>
+                {error ? <span className={classes(errorStyle)}>{error}</span> : null}
+                {status ? <span className={classes(statusStyle)}>{status}</span> : null}
+            </div>
+            <div className={classes(footerActionsStyle)}>
+                <button
+                    className={classes(buttonStyle)}
+                    commandFor={props.id}
+                    command="close"
+                    type="button"
+                >
+                    Cancel
+                </button>
+                <button
+                    className={classes([buttonStyle, primaryButtonStyle])}
+                    type="button"
+                    onClick={() => saveSettings()}
+                    disabled={isSaving}
+                >
+                    {isSaving ? "Saving..." : "Save settings"}
+                </button>
+            </div>
+        </div>
+    </dialog>
+
+    async function saveSettings() {
+        setError('')
+        setStatus('')
+
+        let validationError = validateSettings(draft)
+        if (validationError) {
+            setError(validationError)
+            return
+        }
+
+        let portNum = parseInt(serverDraft.port, 10)
+        if (!portNum || portNum < 1 || portNum > 65535) {
+            setError('Port must be between 1 and 65535')
+            return
+        }
+
+        try {
+            setIsSaving(true)
+            let response = await api.settings.save.mutate({
+                settings: draft,
+                server: { hostname: serverDraft.hostname.trim(), port: portNum, listenOnAllInterfaces: serverDraft.listenOnAllInterfaces }
+            })
+            setDraft(response.settings)
+            setServerDraft({
+                hostname: response.server.hostname,
+                port: String(response.server.port ?? 80),
+                listenOnAllInterfaces: response.server.listenOnAllInterfaces
+            })
+            setStatus('Settings saved')
+            dialogRef.current?.close()
+            props.onSaved({ redirectUrl: response.redirectUrl ?? undefined })
+        } catch {
+            setError('Could not save settings')
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
+    async function loadSettings() {
+        try {
+            let response = await api.settings.get.query()
+            setDraft(response.settings)
+            setServerDraft({
+                hostname: response.server.hostname,
+                port: String(response.server.port ?? 80),
+                listenOnAllInterfaces: response.server.listenOnAllInterfaces
+            })
+        } catch {
+        }
+    }
+
+    function onProviderDraftChange(provider: keyof TtsSettingsDraft, field: keyof ProviderSettingsDraft, value: string | boolean) {
+        setDraft(current => ({
+            ...current,
+            [provider]: {
+                ...current[provider],
+                [field]: value
+            }
+        }))
+    }
+
+    function onServerDraftChange(field: keyof ServerSettingsDraft, value: string | boolean) {
+        setServerDraft(current => ({ ...current, [field]: value }))
+    }
+}
+
+function createDefaultSettingsDraft(): TtsSettingsDraft {
+    return {
+        inworld: {
+            enabled: false,
+            apiKey: '',
+            baseUrl: 'https://api.inworld.ai'
+        },
+        openai: {
+            enabled: false,
+            apiKey: '',
+            baseUrl: 'https://api.openai.com/v1'
+        },
+        elevenlabs: {
+            enabled: false,
+            apiKey: '',
+            baseUrl: 'https://api.elevenlabs.io'
+        },
+        lemonfox: {
+            enabled: false,
+            apiKey: '',
+            baseUrl: 'https://api.lemonfox.ai/v1'
+        }
+    }
+}
+
+function createDefaultServerDraft(): ServerSettingsDraft {
+    return {
+        hostname: '',
+        port: '80',
+        listenOnAllInterfaces: true
+    }
 }
 
 function ProviderPanel(props: {
@@ -176,6 +279,25 @@ function ProviderPanel(props: {
             </label>
         </div>
     </div>
+}
+
+function validateSettings(settings: TtsSettingsDraft) {
+    let providers: Array<{ name: string; value: ProviderSettingsDraft }> = [
+        { name: 'Inworld', value: settings.inworld },
+        { name: 'OpenAI', value: settings.openai },
+        { name: 'ElevenLabs', value: settings.elevenlabs },
+        { name: 'Lemonfox', value: settings.lemonfox }
+    ]
+
+    for (let provider of providers) {
+        if (provider.value.enabled && !provider.value.apiKey.trim())
+            return `${provider.name} API key is required when enabled`
+
+        if (!provider.value.baseUrl.trim())
+            return `${provider.name} base URL is required`
+    }
+
+    return ''
 }
 
 function ServerPanel(props: {
@@ -232,19 +354,6 @@ function ServerPanel(props: {
     </div>
 }
 
-let overlayStyle = style('settingsOverlay', {
-    position: 'fixed',
-    inset: 0,
-    backgroundColor: 'color-mix(in srgb, var(--bg) 60%, transparent)',
-    backdropFilter: 'blur(4px)',
-    WebkitBackdropFilter: 'blur(4px)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-    zIndex: 100
-})
-
 let dialogContainerStyle = style('settingsDialog', {
     width: '100%',
     maxWidth: 600,
@@ -252,9 +361,19 @@ let dialogContainerStyle = style('settingsDialog', {
     border: '1px solid var(--border)',
     borderRadius: 10,
     boxShadow: '0 8px 30px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)',
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'hidden'
+    overflow: 'hidden',
+    padding: 0,
+    $: {
+        '&[open]': {
+            display: 'flex',
+            flexDirection: 'column'
+        },
+        '&::backdrop': {
+            backgroundColor: 'color-mix(in srgb, var(--bg) 60%, transparent)',
+            backdropFilter: 'blur(4px)',
+            WebkitBackdropFilter: 'blur(4px)'
+        }
+    }
 })
 
 let headerStyle = style('settingsHeader', {

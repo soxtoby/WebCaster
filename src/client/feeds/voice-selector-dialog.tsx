@@ -4,9 +4,9 @@ import { useVoicePreview } from "./use-voice-preview"
 import { type VoiceOption } from "./voice-selector-field"
 
 export function VoiceSelectorDialog(props: {
+    id: string
     value: string
     options: VoiceOption[]
-    onCancel: () => void
     onSave: (value: string) => void
 }) {
     let [pendingVoiceId, setPendingVoiceId] = useState(props.value)
@@ -32,14 +32,23 @@ export function VoiceSelectorDialog(props: {
             selectedVoiceRef.current.scrollIntoView({ block: 'nearest' })
     }, [pendingVoiceId])
 
-    return <div className={classes(voiceModalBackdropStyle)} onClick={props.onCancel}>
-        <div
-            className={classes(voiceModalStyle)}
-            onClick={event => event.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Voice selector"
-        >
+    return <dialog
+        id={props.id}
+        className={classes(voiceModalStyle)}
+        onToggle={event => {
+            if (event.newState == 'open') {
+                setPendingVoiceId(props.value)
+                setGenderFilter('all')
+                setTextFilter('')
+            }
+        }}
+        onClick={event => {
+            if (event.target == event.currentTarget)
+                (event.currentTarget as HTMLDialogElement).close()
+        }}
+        aria-label="Voice selector"
+    >
+        <div className={classes(voiceModalInnerStyle)}>
             <div className={classes(voiceModalHeaderStyle)}>
                 <h3 className={classes(voiceModalHeadingStyle)}>Select voice</h3>
             </div>
@@ -118,19 +127,22 @@ export function VoiceSelectorDialog(props: {
                 </div>
                 : null}
             {voicePreview.previewError ? <p className={classes(errorStyle)}>{voicePreview.previewError}</p> : null}
-            <div className={classes(voiceModalActionsStyle)}>
-                <button className={classes(buttonStyle)} onClick={props.onCancel} type="button">Cancel</button>
+            <form
+                method="dialog"
+                className={classes(voiceModalActionsStyle)}
+                onSubmit={() => props.onSave(pendingVoiceId)}
+            >
+                <button className={classes(buttonStyle)} commandFor={props.id} command="close" type="button">Cancel</button>
                 <button
                     className={classes([buttonStyle, primaryButtonStyle])}
                     disabled={!pendingVoiceId || pendingVoiceId == props.value}
-                    onClick={() => props.onSave(pendingVoiceId)}
-                    type="button"
+                    type="submit"
                 >
                     Save
                 </button>
-            </div>
+            </form>
         </div>
-    </div>
+    </dialog>
 }
 
 function buildVoiceMetaLabel(option: VoiceOption) {
@@ -244,26 +256,27 @@ let voicePreviewListStyle = style('voiceSelectorDialogPreviewList', {
     paddingRight: 2
 })
 
-let voiceModalBackdropStyle = style('voiceSelectorDialogBackdrop', {
-    position: 'fixed',
-    inset: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    display: 'grid',
-    placeItems: 'center',
-    padding: 16,
-    zIndex: 1000
-})
-
 let voiceModalStyle = style('voiceSelectorDialog', {
     width: 'min(760px, 100%)',
     maxHeight: '80vh',
     overflow: 'hidden',
-    display: 'flex',
-    flexDirection: 'column',
     backgroundColor: 'var(--panel)',
     border: '1px solid var(--border)',
     borderRadius: 12,
-    padding: 12
+    padding: 0,
+    $: {
+        '&::backdrop': {
+            backgroundColor: 'rgba(0, 0, 0, 0.4)'
+        }
+    }
+})
+
+let voiceModalInnerStyle = style('voiceSelectorDialogInner', {
+    display: 'flex',
+    flexDirection: 'column',
+    padding: 12,
+    maxHeight: '80vh',
+    overflow: 'hidden'
 })
 
 let voiceModalHeaderStyle = style('voiceSelectorDialogHeader', {

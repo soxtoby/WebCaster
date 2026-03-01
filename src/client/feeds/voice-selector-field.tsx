@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useId } from "react"
 import { classes, style } from "stylemap"
 import { VoiceSelectorDialog } from "./voice-selector-dialog"
 
@@ -16,51 +16,35 @@ export function VoiceSelectorField(props: {
     options: VoiceOption[]
     onChange: (value: string) => void
 }) {
-    let [isOpen, setIsOpen] = useState(false)
+    let dialogId = useId()
     let selectedOption = props.options.find(option => option.id == props.value) || null
     let voiceSummaryText = buildVoiceSummaryText(selectedOption, props.value)
 
     return <div className={classes(fieldGroupStyle)}>
         <span className={classes(labelStyle)}>{props.label}</span>
-        <div
+        <button
             className={classes(voicePickerInlineStyle)}
-            onClick={() => {
-                setIsOpen(true)
-            }}
-            onKeyDown={event => {
-                if (event.key == 'Enter' || event.key == ' ') {
-                    event.preventDefault()
-                    setIsOpen(true)
-                }
-            }}
-            role="button"
-            tabIndex={0}
+            commandFor={dialogId}
+            command="show-modal"
+            type="button"
+            title="Choose voice"
+            aria-label={`Choose voice: ${voiceSummaryText}`}
         >
-            <div className={classes(inputStyle)}>{voiceSummaryText}</div>
-            <button
-                className={classes(buttonStyle)}
-                type="button"
-                title="Choose voice"
-                aria-label="Choose voice"
-            >
+            <span className={classes(inputStyle)}>{voiceSummaryText}</span>
+            <span className={classes(iconStyle)}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                     <circle cx="5" cy="12" r="2" />
                     <circle cx="12" cy="12" r="2" />
                     <circle cx="19" cy="12" r="2" />
                 </svg>
-            </button>
-        </div>
-        {isOpen
-            ? <VoiceSelectorDialog
-                value={props.value}
-                options={props.options}
-                onCancel={() => setIsOpen(false)}
-                onSave={value => {
-                    props.onChange(value)
-                    setIsOpen(false)
-                }}
-            />
-            : null}
+            </span>
+        </button>
+        <VoiceSelectorDialog
+            id={dialogId}
+            value={props.value}
+            options={props.options}
+            onSave={props.onChange}
+        />
     </div>
 }
 
@@ -100,7 +84,6 @@ let labelStyle = style('voiceSelectorLabel', {
 })
 
 let inputStyle = style('voiceSelectorInput', {
-    width: '100%',
     border: '1px solid var(--border)',
     borderRadius: 6,
     padding: '8px 12px',
@@ -112,27 +95,20 @@ let inputStyle = style('voiceSelectorInput', {
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-    fontSize: 13
+    fontSize: 13,
+    flex: 1,
+    minWidth: 0
 })
 
-let buttonStyle = style('voiceSelectorButton', {
+let iconStyle = style('voiceSelectorIcon', {
     border: '1px solid var(--border)',
     borderRadius: 6,
-    padding: '8px',
-    minHeight: 34,
-    minWidth: 34,
-    backgroundColor: 'var(--panel)',
-    color: 'var(--text)',
-    cursor: 'pointer',
+    width: 34,
+    height: 34,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    transition: 'border-color 0.15s',
-    $: {
-        '&:hover': {
-            borderColor: 'var(--muted)'
-        }
-    }
+    flexShrink: 0
 })
 
 let voicePickerInlineStyle = style('voiceSelectorInline', {
@@ -140,5 +116,11 @@ let voicePickerInlineStyle = style('voiceSelectorInline', {
     gridTemplateColumns: 'minmax(0, 1fr) auto',
     gap: 8,
     alignItems: 'stretch',
-    cursor: 'pointer'
+    cursor: 'pointer',
+    background: 'none',
+    border: 'none',
+    padding: 0,
+    color: 'inherit',
+    font: 'inherit',
+    textAlign: 'left'
 })

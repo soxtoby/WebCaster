@@ -5,7 +5,7 @@ import { api } from "../api"
 import icon from "../icon.svg"
 import { feedCollection } from "./feed-collections"
 import { FeedDetailsSection } from "./feed-details-section"
-import { TtsSettingsModal, type ProviderSettingsDraft, type TtsSettingsDraft, type ServerSettingsDraft } from "./tts-settings-modal"
+import { SettingsDialog } from "./settings-dialog"
 import { type VoiceOption } from "./voice-selector-field"
 
 type FeedDraft = {
@@ -39,12 +39,6 @@ export function FeedManagerPage() {
     let [activeEpisodeAudioUrl, setActiveEpisodeAudioUrl] = useState('')
 
     let [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>([])
-    let [isSettingsOpen, setIsSettingsOpen] = useState(false)
-    let [settingsDraft, setSettingsDraft] = useState<TtsSettingsDraft>(createDefaultSettingsDraft())
-    let [settingsStatus, setSettingsStatus] = useState('')
-    let [settingsError, setSettingsError] = useState('')
-    let [isSavingSettings, setIsSavingSettings] = useState(false)
-    let [serverDraft, setServerDraft] = useState<ServerSettingsDraft>({ hostname: '', port: '80', listenOnAllInterfaces: true })
 
     let { data: feeds = [], isLoading, isError } = useLiveQuery(q => q.from({ feedCollection }))
 
@@ -108,7 +102,6 @@ export function FeedManagerPage() {
     }, [selectedFeedId])
 
     useEffect(() => {
-        void loadSettings()
         void loadVoices()
     }, [])
 
@@ -120,11 +113,8 @@ export function FeedManagerPage() {
             </div>
             <button
                 className={classes(settingsButtonStyle)}
-                onClick={() => {
-                    setSettingsError('')
-                    setSettingsStatus('')
-                    setIsSettingsOpen(true)
-                }}
+                commandFor="settings-dialog"
+                command="show-modal"
                 type="button"
                 aria-label="Settings"
             >
@@ -210,38 +200,16 @@ export function FeedManagerPage() {
                         setActiveEpisodeKey(episode.episodeKey)
                         setActiveEpisodeAudioUrl(episode.audioUrl)
                     }}
-                    onSubmit={() => {
-                        void saveFeed()
-                    }}
+                    onSubmit={() => saveFeed()}
                     status={status}
                     voiceOptions={resolvedVoiceOptions}
                 />
                 : null}
         </div>
 
-        <TtsSettingsModal
-            draft={settingsDraft}
-            serverDraft={serverDraft}
-            error={settingsError}
-            isOpen={isSettingsOpen}
-            isSaving={isSavingSettings}
-            onChange={(provider, field, value) => {
-                setSettingsDraft(current => ({
-                    ...current,
-                    [provider]: {
-                        ...current[provider],
-                        [field]: value
-                    }
-                }))
-            }}
-            onServerChange={(field, value) => {
-                setServerDraft(current => ({ ...current, [field]: value }))
-            }}
-            onClose={() => setIsSettingsOpen(false)}
-            onSave={() => {
-                void saveSettings()
-            }}
-            status={settingsStatus}
+        <SettingsDialog
+            id="settings-dialog"
+            onSaved={handleSettingsSaved}
         />
     </div>
 
@@ -328,116 +296,20 @@ export function FeedManagerPage() {
                 provider: voice.provider
             }))
             setVoiceOptions(voices)
-        }
-        catch {
+        } catch {
             setVoiceOptions([])
         }
     }
 
-    async function loadSettings() {
-        try {
-            let response = await api.settings.get.query()
-            setSettingsDraft(response.settings)
-            setServerDraft({
-                hostname: response.server.hostname,
-                port: String(response.server.port),
-                listenOnAllInterfaces: response.server.listenOnAllInterfaces
-            })
-        }
-        catch {
-            setSettingsError('Could not load settings')
+    async function handleSettingsSaved(result: { redirectUrl?: string }) {
+        await loadVoices()
+
+        if (result.redirectUrl) {
+            setTimeout(() => {
+                window.location.href = result.redirectUrl!
+            }, 1000)
         }
     }
-
-    async function saveSettings() {
-        setSettingsError('')
-        setSettingsStatus('')
-
-        let validationError = validateSettings(settingsDraft)
-        if (validationError) {
-            setSettingsError(validationError)
-            return
-        }
-
-        let portNum = parseInt(serverDraft.port, 10)
-        if (!portNum || portNum < 1 || portNum > 65535) {
-            setSettingsError('Port must be between 1 and 65535')
-            return
-        }
-
-        try {
-            setIsSavingSettings(true)
-            let response = await api.settings.save.mutate({
-                settings: settingsDraft,
-                server: { hostname: serverDraft.hostname.trim(), port: portNum, listenOnAllInterfaces: serverDraft.listenOnAllInterfaces }
-            })
-            setSettingsDraft(response.settings)
-            setServerDraft({
-                hostname: response.server.hostname,
-                port: String(response.server.port),
-                listenOnAllInterfaces: response.server.listenOnAllInterfaces
-            })
-            setSettingsStatus('Settings saved')
-            await loadVoices()
-            setIsSettingsOpen(false)
-
-            if (response.redirectUrl) {
-                setTimeout(() => {
-                    window.location.href = response.redirectUrl!
-                }, 1000)
-            }
-        }
-        catch {
-            setSettingsError('Could not save settings')
-        }
-        finally {
-            setIsSavingSettings(false)
-        }
-    }
-}
-
-function createDefaultSettingsDraft(): TtsSettingsDraft {
-    return {
-        inworld: {
-            enabled: false,
-            apiKey: '',
-            baseUrl: 'https://api.inworld.ai'
-        },
-        openai: {
-            enabled: false,
-            apiKey: '',
-            baseUrl: 'https://api.openai.com/v1'
-        },
-        elevenlabs: {
-            enabled: false,
-            apiKey: '',
-            baseUrl: 'https://api.elevenlabs.io'
-        },
-        lemonfox: {
-            enabled: false,
-            apiKey: '',
-            baseUrl: 'https://api.lemonfox.ai/v1'
-        }
-    }
-}
-
-function validateSettings(settings: TtsSettingsDraft) {
-    let providers: Array<{ name: string; value: ProviderSettingsDraft }> = [
-        { name: 'Inworld', value: settings.inworld },
-        { name: 'OpenAI', value: settings.openai },
-        { name: 'ElevenLabs', value: settings.elevenlabs },
-        { name: 'Lemonfox', value: settings.lemonfox }
-    ]
-
-    for (let provider of providers) {
-        if (provider.value.enabled && !provider.value.apiKey.trim())
-            return `${provider.name} API key is required when enabled`
-
-        if (!provider.value.baseUrl.trim())
-            return `${provider.name} base URL is required`
-    }
-
-    return ''
 }
 
 function getFallbackVoiceId(voiceOptions: VoiceOption[]) {
