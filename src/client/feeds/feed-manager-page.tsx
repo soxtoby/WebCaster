@@ -2,9 +2,10 @@ import { useLiveQuery } from "@tanstack/react-db"
 import { useEffect, useMemo, useState } from "react"
 import { classes, cssRules, style } from "stylemap"
 import { api } from "../api"
+import icon from "../icon.svg"
 import { feedCollection } from "./feed-collections"
 import { FeedDetailsSection } from "./feed-details-section"
-import { type ProviderSettingsDraft, TtsSettingsModal, type TtsSettingsDraft } from "./tts-settings-modal"
+import { TtsSettingsModal, type ProviderSettingsDraft, type TtsSettingsDraft } from "./tts-settings-modal"
 import { type VoiceOption } from "./voice-selector-field"
 
 type FeedDraft = {
@@ -112,9 +113,9 @@ export function FeedManagerPage() {
 
     return <div className={classes(pageStyle)}>
         <header className={classes(headerStyle)}>
-            <div>
-                <h1 className={classes(headingStyle)}>RSS Feeds</h1>
-                <p className={classes(subtitleStyle)}>Manage feed sources and narration defaults in one view.</p>
+            <div className={classes(brandStyle)}>
+                <img className={classes(brandIconStyle)} src={icon} alt="WebCaster logo" />
+                <h1 className={classes(headingStyle)}><span className={classes(headingWebStyle)}>Web</span><span className={classes(headingCasterStyle)}>Caster</span></h1>
             </div>
             <button
                 className={classes(buttonStyle)}
@@ -465,21 +466,38 @@ let pageStyle = style('page', {
 
 let headerStyle = style('header', {
     display: 'flex',
-    alignItems: 'start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10
 })
 
-let headingStyle = style('heading', {
-    margin: 0,
-    fontSize: 24,
-    lineHeight: 1.2
+let brandStyle = style('brand', {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8
 })
 
-let subtitleStyle = style('subtitle', {
-    margin: [4, 0, 0, 0],
-    fontSize: 14,
-    color: 'var(--muted)'
+let brandIconStyle = style('brandIcon', {
+    width: 28,
+    height: 28,
+    color: 'var(--accent, #7c5cfc)',
+    flexShrink: 0
+})
+
+let headingStyle = style('heading', {
+    margin: 0,
+    fontSize: 22,
+    lineHeight: 1.2,
+    fontWeight: 700,
+    letterSpacing: '-0.02em'
+})
+
+let headingWebStyle = style('headingWeb', {
+    color: '#1e293b'
+})
+
+let headingCasterStyle = style('headingCaster', {
+    color: '#64748b'
 })
 
 let layoutStyle = style('layout', {

@@ -10,11 +10,10 @@ let pendingUpdate: { version: string; restart: () => void } | null = null
 export async function setupNotificationIcon(serverUrl: string) {
     if (process.platform == 'win32') {
         let iconFile = file(iconPath)
-        if (!await iconFile.exists())
-            await iconFile.write(file(embeddedIcon))
+        await iconFile.write(file(embeddedIcon))
 
         notifyIcon = new NotifyIcon({
-            icon: Icon.load(iconPath, Icon.small),
+            icon: Icon.load(iconPath, Icon.large),
             tooltip: "WebCaster",
             async onSelect(event) {
                 if (event.rightButton) {
