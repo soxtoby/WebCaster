@@ -15,7 +15,7 @@ export const feedCollection = createCollection(queryCollectionOptions<Feed>({
     queryFn: async () => (await api.feeds.list.query()).feeds,
     onInsert: async ({ transaction }) => {
         let feed = transaction.mutations[0].modified
-        await api.feeds.create.mutate({
+        return await api.feeds.create.mutate({
             name: feed.name,
             rssUrl: feed.rssUrl,
             voice: feed.voice,
@@ -25,7 +25,7 @@ export const feedCollection = createCollection(queryCollectionOptions<Feed>({
     },
     onUpdate: async ({ transaction }) => {
         let { original, modified } = transaction.mutations[0]
-        await api.feeds.update.mutate({
+        return await api.feeds.update.mutate({
             id: original.id,
             name: modified.name,
             rssUrl: modified.rssUrl,
@@ -36,7 +36,7 @@ export const feedCollection = createCollection(queryCollectionOptions<Feed>({
     },
     onDelete: async ({ transaction }) => {
         let feed = transaction.mutations[0].original
-        await api.feeds.delete.mutate({ id: feed.id })
+        return await api.feeds.delete.mutate({ id: feed.id })
     }
 }))
 

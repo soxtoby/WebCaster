@@ -43,7 +43,7 @@ export function FeedManagerPage() {
     let { data: feeds = [], isLoading, isError } = useLiveQuery(q => q.from({ feedCollection }))
 
     let selectedFeed = useMemo(() => {
-        return feeds.find(feed => feed.id == selectedFeedId) ?? null
+        return feeds.find(feed => feed.id == selectedFeedId) ?? (selectedFeedId && selectedFeedId < 0 ? feeds.at(-1) : null)
     }, [feeds, selectedFeedId])
 
     let resolvedVoiceOptions = useMemo(() => {
@@ -240,7 +240,7 @@ export function FeedManagerPage() {
             await loadEpisodes(selectedFeed.id)
         } else {
             let newFeed = {
-                id: -feedCollection.size,
+                id: -1,
                 ...draft,
                 description: null,
                 imageUrl: null,
@@ -248,8 +248,9 @@ export function FeedManagerPage() {
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString()
             }
-            feedCollection.insert(newFeed)
-            setSelectedFeedId(newFeed.id)
+            await feedCollection.insert(newFeed).isPersisted.promise
+            let newFeedId = feedCollection.toArray.findLast(f => f.rssUrl == newFeed.rssUrl)?.id ?? null
+            setSelectedFeedId(newFeedId)
             setIsCreating(false)
             setStatus('Feed added')
         }

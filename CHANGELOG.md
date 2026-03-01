@@ -4,6 +4,7 @@
 
 ### Fixed
 - Gender in voice description is detected instead of guessing from name.
+- New feed is selected after it's created.
 
 ## V1.0.1
 
