@@ -155,7 +155,7 @@ function mapInworldVoice(entry: InworldVoice): VoiceRecord {
     let providerVoiceId = entry.voiceId
     let name = entry.displayName || entry.name || providerVoiceId
     let description = entry.description
-    let gender = detectGenderFromName(name)
+    let gender = detectGenderFromName(name, description)
 
     return {
         id: `inworld:${providerVoiceId}`,

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Gender in voice description is detected instead of guessing from name.
+
 ## V1.0.1
 
 ### Fixed

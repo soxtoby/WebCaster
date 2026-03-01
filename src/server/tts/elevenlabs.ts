@@ -63,7 +63,7 @@ function mapElevenLabsVoice(entry: ElevenLabsVoice): VoiceRecord {
     let name = entry.name || ''
     let description = entry.description || entry.labels?.description || ''
 
-    let gender = entry.labels?.gender ?? detectGenderFromName(name)
+    let gender = entry.labels?.gender ?? detectGenderFromName(name, description)
 
     return {
         id: `elevenlabs:${providerVoiceId}`,
