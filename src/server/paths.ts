@@ -10,7 +10,7 @@ export let updateDir = join(appDataDirectory, 'update')
 export let updateExePath = join(updateDir, 'WebCaster.exe')
 
 export function voicePreviewPath(voiceId: string) {
-	return join(voicePreviewsDirectory, `${voiceId}.mp3`)
+	return join(voicePreviewsDirectory, `${sanitizeFileName(voiceId)}.mp3`)
 }
 
 export function episodePath(podcastSlug: string, episodeKey: string) {
@@ -19,4 +19,8 @@ export function episodePath(podcastSlug: string, episodeKey: string) {
 
 export function podcastDirectory(podcastSlug: string) {
 	return join(episodesDirectory, podcastSlug)
+}
+
+function sanitizeFileName(name: string) {
+	return name.replace(/[<>:"/\\|?*]/g, '_')
 }
