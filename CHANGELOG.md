@@ -1,5 +1,10 @@
 # Changelog
 
+## V1.0.1
+
+### Fixed
+- Fixed "Cannot find module" error when starting standalone executable.
+
 ## v1.0.0
 Initial release
 - Basic feed management.
