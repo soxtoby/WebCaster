@@ -260,6 +260,10 @@ export function FeedManagerPage() {
         if (!selectedFeed)
             return
 
+        let confirmed = window.confirm(`Delete feed "${selectedFeed.name || 'Untitled Feed'}"?`)
+        if (!confirmed)
+            return
+
         setError('')
         setStatus('')
         feedCollection.delete(selectedFeed.id.toString())

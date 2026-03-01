@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- Confirmation prompt when deleting a feed.
+
 ### Fixed
 - Gender in voice description is detected instead of guessing from name.
 - New feed is selected after it's created.
