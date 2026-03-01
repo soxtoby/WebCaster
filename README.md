@@ -1,54 +1,41 @@
 # WebCaster
 
-To install dependencies:
+Turn your favorite RSS feeds into a podcast. WebCaster is a self-hosted app that converts text articles into AI-narrated audio episodes you can subscribe to in your preferred podcast player.
+
+## Features
+
+### RSS to Podcast
+
+Point WebCaster at any RSS or Atom feed and it generates a standard podcast feed with audio versions of every article. Subscribe to the output feed in Apple Podcasts, Pocket Casts, Overcast, or any other podcast app.
+
+### Multiple TTS Providers
+
+Choose from four text-to-speech providers — mix and match across feeds:
+
+- **OpenAI** — 13 voices via the gpt-4o-mini-tts model
+- **ElevenLabs** — hundreds of voices fetched dynamically
+- **Inworld** — streaming chunked synthesis
+- **Lemonfox** — 27 American & British voices (OpenAI-compatible API)
+
+### Flexible Generation
+
+- **On demand** — audio is generated the first time you download request an episode, saving on compute costs
+- **Every episode** — all new articles are automatically narrated as they appear, so they're ready to listen right away
+
+### Content Sources
+
+- **Feed article** — uses the summary or full content from the RSS feed
+- **Source page** — fetches the original article URL and extracts readable text
+
+### Desktop Integration (Windows)
+
+Runs as a system-tray app with one-click browser launch, and auto-updates from GitHub releases.
+
+## Getting Started
 
 ```bash
 bun install
+bun start
 ```
 
-To run:
-
-```bash
-bun run start
-```
-
-To manage database migrations:
-
-```bash
-bun run db:generate
-```
-
-This project was created using `bun init` in bun v1.3.8. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
-
-## Feed management UI
-
-The app includes a single-page RSS feed manager with feed list and feed details on the same screen.
-
-- TTS provider settings open in a modal dialog over the main page.
-- Supported providers: Inworld, OpenAI, ElevenLabs.
-- Supported providers: Inworld, OpenAI, ElevenLabs, Lemonfox.
-- Voice selector merges voices from configured providers and shows voice name, description, gender, and source.
-- If a provider does not return gender, gender is inferred from voice name with `unknown` fallback.
-
-Feed fields:
-- Name
-- RSS URL
-- Voice (provider-scoped voice id)
-- Language (`en`)
-- Generation mode (`on_demand` or `every_episode`)
-- Content source (`feed_article` or `source_page`)
-
-Feed details also shows:
-- Generated podcast feed URL
-- Feed episodes and generation status (`pending`, `generating`, `ready`, `failed`)
-
-The UI follows the system color preference using `prefers-color-scheme`.
-
-## API
-
-- tRPC endpoint: `POST /api/*`
-- Podcast feed endpoint: `GET /feed/:slug`
-- Voice preview endpoint: `GET /preview/:voiceId`
-- Episode audio endpoint: `GET /feed/:slug/:episodeTitle`
-
-Feed data is stored locally in SQLite at `data/webcaster.sqlite`.
+Open in your browser, configure a TTS provider, add a feed, and start listening.
