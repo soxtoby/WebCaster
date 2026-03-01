@@ -20,8 +20,8 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@tanstack/query-db-collection": "^1.0.23",
-    "@tanstack/react-db": "^0.1.70",
+    "@tanstack/query-db-collection": "^1.0.27",
+    "@tanstack/react-db": "^0.1.74",
     "@tanstack/react-query": "^5.90.21",
     "@trpc/client": "^11.10.0",
     "@trpc/server": "^11.10.0",
