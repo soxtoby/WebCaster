@@ -48,10 +48,17 @@ export function VoiceSelectorDialog(props: {
         }}
         aria-label="Voice selector"
     >
+        <div className={classes(voiceModalHeaderStyle)}>
+            <h3 className={classes(voiceModalHeadingStyle)}>Select voice</h3>
+            <button
+                className={classes(closeButtonStyle)}
+                commandFor={props.id}
+                command="close"
+                type="button"
+                aria-label="Close"
+            >×</button>
+        </div>
         <div className={classes(voiceModalInnerStyle)}>
-            <div className={classes(voiceModalHeaderStyle)}>
-                <h3 className={classes(voiceModalHeadingStyle)}>Select voice</h3>
-            </div>
             <div className={classes(voiceFiltersStyle)}>
                 <input
                     className={classes([inputStyle, voiceFilterInputStyle])}
@@ -127,11 +134,14 @@ export function VoiceSelectorDialog(props: {
                 </div>
                 : null}
             {voicePreview.previewError ? <p className={classes(errorStyle)}>{voicePreview.previewError}</p> : null}
-            <form
-                method="dialog"
-                className={classes(voiceModalActionsStyle)}
-                onSubmit={() => props.onSave(pendingVoiceId)}
-            >
+        </div>
+        <form
+            method="dialog"
+            className={classes(voiceModalActionsStyle)}
+            onSubmit={() => props.onSave(pendingVoiceId)}
+        >
+            <div />
+            <div className={classes(footerActionsStyle)}>
                 <button className={classes(buttonStyle)} commandFor={props.id} command="close" type="button">Cancel</button>
                 <button
                     className={classes([buttonStyle, primaryButtonStyle])}
@@ -140,8 +150,8 @@ export function VoiceSelectorDialog(props: {
                 >
                     Save
                 </button>
-            </form>
-        </div>
+            </div>
+        </form>
     </dialog>
 }
 
@@ -193,11 +203,24 @@ function buildPreviewAriaLabel(isUnavailable: boolean, isPreviewing: boolean, is
 
 let inputStyle = style('voiceSelectorDialogInput', {
     width: '100%',
+    padding: '8px 12px',
     border: '1px solid var(--border)',
-    borderRadius: 8,
-    padding: [10, 12],
-    backgroundColor: 'transparent',
-    color: 'inherit'
+    borderRadius: 6,
+    fontSize: 13,
+    backgroundColor: 'var(--bg)',
+    color: 'var(--text)',
+    outline: 'none',
+    transition: 'border-color 0.15s, box-shadow 0.15s',
+    minHeight: 34,
+    $: {
+        '&:hover': {
+            borderColor: 'var(--muted)'
+        },
+        '&:focus': {
+            borderColor: 'var(--accent)',
+            boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent)'
+        }
+    }
 })
 
 let voiceFilterInputStyle = style('voiceSelectorDialogFilterInput', {
@@ -207,11 +230,24 @@ let voiceFilterInputStyle = style('voiceSelectorDialogFilterInput', {
 
 let buttonStyle = style('voiceSelectorDialogButton', {
     border: '1px solid var(--border)',
-    borderRadius: 8,
-    padding: [9, 12],
-    backgroundColor: 'transparent',
-    color: 'inherit',
-    cursor: 'pointer'
+    borderRadius: 6,
+    padding: '6px 14px',
+    backgroundColor: 'var(--panel)',
+    color: 'var(--text)',
+    fontSize: 13,
+    fontWeight: 500,
+    cursor: 'pointer',
+    transition: 'all 0.15s',
+    $: {
+        '&:hover': {
+            borderColor: 'var(--muted)',
+            backgroundColor: 'var(--bg)'
+        },
+        '&:disabled': {
+            opacity: 0.6,
+            cursor: 'not-allowed'
+        }
+    }
 })
 
 let previewIconButtonStyle = style('voiceSelectorDialogPreviewIconButton', {
@@ -232,7 +268,14 @@ let previewIconStyle = style('voiceSelectorDialogPreviewIcon', {
 let primaryButtonStyle = style('voiceSelectorDialogPrimaryButton', {
     backgroundColor: 'var(--accent)',
     borderColor: 'var(--accent)',
-    color: 'var(--accent-text)'
+    color: 'var(--accent-text)',
+    border: 'none',
+    $: {
+        '&:hover': {
+            backgroundColor: 'color-mix(in srgb, var(--accent) 85%, black)',
+            borderColor: 'transparent'
+        }
+    }
 })
 
 let statusStyle = style('voiceSelectorDialogStatus', {
@@ -249,24 +292,34 @@ let voicePreviewListStyle = style('voiceSelectorDialogPreviewList', {
     display: 'grid',
     gap: 6,
     alignContent: 'start',
-    marginTop: 6,
     flex: '1 1 auto',
     minHeight: 0,
     overflowY: 'auto',
-    paddingRight: 2
+    marginLeft: -20,
+    marginRight: -20,
+    padding: '8px 20px',
+    scrollbarGutter: 'stable'
 })
 
 let voiceModalStyle = style('voiceSelectorDialog', {
-    width: 'min(760px, 100%)',
+    width: '100%',
+    maxWidth: 600,
     maxHeight: '80vh',
     overflow: 'hidden',
     backgroundColor: 'var(--panel)',
     border: '1px solid var(--border)',
-    borderRadius: 12,
+    borderRadius: 10,
+    boxShadow: '0 8px 30px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)',
     padding: 0,
     $: {
+        '&[open]': {
+            display: 'flex',
+            flexDirection: 'column'
+        },
         '&::backdrop': {
-            backgroundColor: 'rgba(0, 0, 0, 0.4)'
+            backgroundColor: 'color-mix(in srgb, var(--bg) 60%, transparent)',
+            backdropFilter: 'blur(4px)',
+            WebkitBackdropFilter: 'blur(4px)'
         }
     }
 })
@@ -274,8 +327,10 @@ let voiceModalStyle = style('voiceSelectorDialog', {
 let voiceModalInnerStyle = style('voiceSelectorDialogInner', {
     display: 'flex',
     flexDirection: 'column',
-    padding: 12,
-    maxHeight: '80vh',
+    padding: '20px 20px 0 20px',
+    gap: 0,
+    flex: 1,
+    minHeight: 0,
     overflow: 'hidden'
 })
 
@@ -283,20 +338,45 @@ let voiceModalHeaderStyle = style('voiceSelectorDialogHeader', {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
-    marginBottom: 6
+    padding: '14px 20px',
+    borderBottom: '1px solid var(--border)',
+    backgroundColor: 'var(--bg)'
 })
 
 let voiceModalHeadingStyle = style('voiceSelectorDialogHeading', {
     margin: 0,
-    fontSize: 16
+    fontSize: 15,
+    fontWeight: 600,
+    color: 'var(--text)'
+})
+
+let closeButtonStyle = style('voiceSelectorDialogCloseButton', {
+    background: 'none',
+    border: 'none',
+    color: 'var(--muted)',
+    fontSize: 20,
+    lineHeight: 1,
+    padding: '4px',
+    cursor: 'pointer',
+    borderRadius: 4,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'all 0.15s',
+    $: {
+        '&:hover': {
+            backgroundColor: 'var(--border)',
+            color: 'var(--text)'
+        }
+    }
 })
 
 let voiceFiltersStyle = style('voiceSelectorDialogFilters', {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 6,
+    paddingBottom: 12,
+    borderBottom: '1px solid var(--border)',
     flexWrap: 'nowrap'
 })
 
@@ -308,9 +388,18 @@ let voiceGenderFilterRowStyle = style('voiceSelectorDialogGenderFilters', {
 
 let voiceModalActionsStyle = style('voiceSelectorDialogActions', {
     display: 'flex',
-    justifyContent: 'end',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '12px 20px',
+    borderTop: '1px solid var(--border)',
+    backgroundColor: 'var(--bg)',
+    gap: 12
+})
+
+let footerActionsStyle = style('voiceSelectorDialogFooterActions', {
+    display: 'flex',
     gap: 8,
-    marginTop: 8
+    flexShrink: 0
 })
 
 let voicePreviewRowStyle = style('voiceSelectorDialogPreviewRow', {
