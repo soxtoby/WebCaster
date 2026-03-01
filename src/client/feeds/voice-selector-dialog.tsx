@@ -10,6 +10,7 @@ export function VoiceSelectorDialog(props: {
     onSave: (value: string) => void
 }) {
     let [pendingVoiceId, setPendingVoiceId] = useState(props.value)
+    let [openScrollVersion, setOpenScrollVersion] = useState(0)
     let [genderFilter, setGenderFilter] = useState<'all' | 'male' | 'female'>('all')
     let [textFilter, setTextFilter] = useState('')
     let voicePreview = useVoicePreview()
@@ -28,9 +29,13 @@ export function VoiceSelectorDialog(props: {
     })
 
     useEffect(() => {
-        if (selectedVoiceRef.current)
-            selectedVoiceRef.current.scrollIntoView({ block: 'nearest' })
-    }, [pendingVoiceId])
+        let frameId = requestAnimationFrame(() => {
+            if (selectedVoiceRef.current)
+                selectedVoiceRef.current.scrollIntoView({ block: 'center' })
+        })
+
+        return () => cancelAnimationFrame(frameId)
+    }, [pendingVoiceId, openScrollVersion])
 
     return <dialog
         id={props.id}
@@ -40,11 +45,8 @@ export function VoiceSelectorDialog(props: {
                 setPendingVoiceId(props.value)
                 setGenderFilter('all')
                 setTextFilter('')
+                setOpenScrollVersion(current => current + 1)
             }
-        }}
-        onClick={event => {
-            if (event.target == event.currentTarget)
-                (event.currentTarget as HTMLDialogElement).close()
         }}
         aria-label="Voice selector"
     >
@@ -56,7 +58,11 @@ export function VoiceSelectorDialog(props: {
                 command="close"
                 type="button"
                 aria-label="Close"
-            >×</button>
+            >
+                <svg className={classes(closeIconStyle)} viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M6 6L18 18M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+            </button>
         </div>
         <div className={classes(voiceModalInnerStyle)}>
             <div className={classes(voiceFiltersStyle)}>
@@ -354,14 +360,13 @@ let closeButtonStyle = style('voiceSelectorDialogCloseButton', {
     background: 'none',
     border: 'none',
     color: 'var(--muted)',
-    fontSize: 20,
-    lineHeight: 1,
-    padding: '4px',
+    width: 36,
+    height: 36,
+    padding: 0,
     cursor: 'pointer',
     borderRadius: 4,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    display: 'grid',
+    placeItems: 'center',
     transition: 'all 0.15s',
     $: {
         '&:hover': {
@@ -369,6 +374,12 @@ let closeButtonStyle = style('voiceSelectorDialogCloseButton', {
             color: 'var(--text)'
         }
     }
+})
+
+let closeIconStyle = style('voiceSelectorDialogCloseIcon', {
+    width: 16,
+    height: 16,
+    display: 'block'
 })
 
 let voiceFiltersStyle = style('voiceSelectorDialogFilters', {

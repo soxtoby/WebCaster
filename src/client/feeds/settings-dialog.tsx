@@ -59,7 +59,11 @@ export function SettingsDialog(props: {
                 command="close"
                 type="button"
                 aria-label="Close"
-            >×</button>
+            >
+                <svg className={classes(closeIconStyle)} viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M6 6L18 18M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+            </button>
         </div>
 
         <div className={classes(layoutStyle)}>
@@ -396,14 +400,13 @@ let closeButtonStyle = style('closeButton', {
     background: 'none',
     border: 'none',
     color: 'var(--muted)',
-    fontSize: 20,
-    lineHeight: 1,
-    padding: '4px',
+    width: 36,
+    height: 36,
+    padding: 0,
     cursor: 'pointer',
     borderRadius: 4,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    display: 'grid',
+    placeItems: 'center',
     transition: 'all 0.15s',
     $: {
         '&:hover': {
@@ -411,6 +414,12 @@ let closeButtonStyle = style('closeButton', {
             color: 'var(--text)'
         }
     }
+})
+
+let closeIconStyle = style('closeIcon', {
+    width: 16,
+    height: 16,
+    display: 'block'
 })
 
 let layoutStyle = style('settingsLayout', {
