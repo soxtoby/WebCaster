@@ -1,5 +1,5 @@
 import { hostname as osHostname } from "os"
-import { boolean, check, number, object, optional, pipe, string, trim, type InferOutput } from "valibot"
+import { boolean, check, number, object, optional, picklist, pipe, string, trim, type InferOutput } from "valibot"
 
 export let ttsProviders = ['inworld', 'openai', 'elevenlabs', 'lemonfox'] as const
 export type TtsProvider = (typeof ttsProviders)[number]
@@ -8,6 +8,18 @@ export type TtsProviderSettings = {
     enabled: boolean
     apiKey: string
     baseUrl: string
+}
+
+export let imageDescriptionProviders = ['openai'] as const
+export type ImageDescriptionProvider = (typeof imageDescriptionProviders)[number]
+
+export type ImageDescriptionSettings = {
+    enabled: boolean
+    provider: ImageDescriptionProvider
+    apiKey: string
+    baseUrl: string
+    model: string
+    prompt: string
 }
 
 export type SettingsState = Record<TtsProvider, TtsProviderSettings>
@@ -32,6 +44,24 @@ export let defaultServerSettings = {
     passwordConfigured: false
 } as const satisfies ServerSettings
 
+export let defaultImageDescriptionSettings = {
+    enabled: false,
+    provider: 'openai',
+    apiKey: '',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-4.1-mini',
+    prompt: 'Describe this image briefly and factually for podcast narration. Focus on visible details only.'
+} as const satisfies ImageDescriptionSettings
+
+let ImageDescriptionSettingsInput = object({
+    enabled: boolean(),
+    provider: picklist(imageDescriptionProviders),
+    apiKey: pipe(string(), trim()),
+    baseUrl: pipe(string(), trim()),
+    model: pipe(string(), trim()),
+    prompt: pipe(string(), trim())
+})
+
 export type SettingsInput = InferOutput<typeof SettingsInput>
 export const SettingsInput = object({
     settings: object({
@@ -40,6 +70,7 @@ export const SettingsInput = object({
         elevenlabs: ProviderSettingsInput,
         lemonfox: ProviderSettingsInput
     }),
+    imageDescription: ImageDescriptionSettingsInput,
     server: object({
         hostname: pipe(string(), trim()),
         port: pipe(

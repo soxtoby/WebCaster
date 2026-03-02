@@ -23,7 +23,16 @@ export type ServerSettingsDraft = {
     passwordConfigured: boolean
 }
 
-type ActiveTab = 'server' | keyof TtsSettingsDraft
+export type ImageDescriptionSettingsDraft = {
+    enabled: boolean
+    provider: 'openai'
+    apiKey: string
+    baseUrl: string
+    model: string
+    prompt: string
+}
+
+type ActiveTab = 'server' | 'imageDescription' | keyof TtsSettingsDraft
 
 export function SettingsDialog(props: {
     id: string
@@ -37,6 +46,7 @@ export function SettingsDialog(props: {
     let [isLoggingOut, setIsLoggingOut] = useState(false)
     let [draft, setDraft] = useState<TtsSettingsDraft>(createDefaultSettingsDraft())
     let [serverDraft, setServerDraft] = useState<ServerSettingsDraft>(createDefaultServerDraft())
+    let [imageDescriptionDraft, setImageDescriptionDraft] = useState<ImageDescriptionSettingsDraft>(createDefaultImageDescriptionDraft())
 
     useEffect(() => {
         void loadSettings()
@@ -77,7 +87,16 @@ export function SettingsDialog(props: {
                         className={classes([tabButtonStyle, activeTab == 'server' && activeTabButtonStyle])}
                         onClick={() => setActiveTab('server')}
                     >
+                        <div className={classes([statusDotStyle, hiddenStatusDotStyle])} aria-hidden="true" />
                         <span>Server</span>
+                    </button>
+                    <button
+                        type="button"
+                        className={classes([tabButtonStyle, activeTab == 'imageDescription' && activeTabButtonStyle])}
+                        onClick={() => setActiveTab('imageDescription')}
+                    >
+                        <div className={classes([statusDotStyle, imageDescriptionDraft.enabled && activeDotStyle])} title={imageDescriptionDraft.enabled ? "Enabled" : "Disabled"} />
+                        <span>Images</span>
                     </button>
                     <div className={classes(tabDividerStyle)} />
                     {ttsTabs.map(tab => {
@@ -103,12 +122,17 @@ export function SettingsDialog(props: {
                         value={serverDraft}
                         onChange={onServerDraftChange}
                     />
-                    : <ProviderPanel
-                        title={ttsTabs.find(t => t.id === activeTab)?.label || ''}
-                        provider={activeTab}
-                        value={draft[activeTab]}
-                        onChange={onProviderDraftChange}
-                    />}
+                    : activeTab == 'imageDescription'
+                        ? <ImageDescriptionPanel
+                            value={imageDescriptionDraft}
+                            onChange={onImageDescriptionDraftChange}
+                        />
+                        : <ProviderPanel
+                            title={ttsTabs.find(t => t.id === activeTab)?.label || ''}
+                            provider={activeTab}
+                            value={draft[activeTab]}
+                            onChange={onProviderDraftChange}
+                        />}
             </div>
         </div>
 
@@ -150,7 +174,7 @@ export function SettingsDialog(props: {
         setError('')
         setStatus('')
 
-        let validationError = validateSettings(draft)
+        let validationError = validateSettings(draft, imageDescriptionDraft)
         if (validationError) {
             setError(validationError)
             return
@@ -167,6 +191,14 @@ export function SettingsDialog(props: {
             let enteredPassword = serverDraft.password.trim()
             let response = await api.settings.save.mutate({
                 settings: draft,
+                imageDescription: {
+                    enabled: imageDescriptionDraft.enabled,
+                    provider: imageDescriptionDraft.provider,
+                    apiKey: imageDescriptionDraft.apiKey.trim(),
+                    baseUrl: imageDescriptionDraft.baseUrl.trim(),
+                    model: imageDescriptionDraft.model.trim(),
+                    prompt: imageDescriptionDraft.prompt.trim()
+                },
                 server: {
                     hostname: serverDraft.hostname.trim(),
                     port: portNum,
@@ -179,6 +211,14 @@ export function SettingsDialog(props: {
                 await api.auth.login.mutate({ password: enteredPassword })
 
             setDraft(response.settings)
+            setImageDescriptionDraft({
+                enabled: response.imageDescription.enabled,
+                provider: response.imageDescription.provider,
+                apiKey: response.imageDescription.apiKey,
+                baseUrl: response.imageDescription.baseUrl,
+                model: response.imageDescription.model,
+                prompt: response.imageDescription.prompt
+            })
             setServerDraft({
                 hostname: response.server.hostname,
                 port: String(response.server.port ?? 80),
@@ -200,6 +240,14 @@ export function SettingsDialog(props: {
         try {
             let response = await api.settings.get.query()
             setDraft(response.settings)
+            setImageDescriptionDraft({
+                enabled: response.imageDescription.enabled,
+                provider: response.imageDescription.provider,
+                apiKey: response.imageDescription.apiKey,
+                baseUrl: response.imageDescription.baseUrl,
+                model: response.imageDescription.model,
+                prompt: response.imageDescription.prompt
+            })
             setServerDraft({
                 hostname: response.server.hostname,
                 port: String(response.server.port ?? 80),
@@ -239,6 +287,10 @@ export function SettingsDialog(props: {
     function onServerDraftChange(field: keyof ServerSettingsDraft, value: string | boolean) {
         setServerDraft(current => ({ ...current, [field]: value }))
     }
+
+    function onImageDescriptionDraftChange(field: keyof ImageDescriptionSettingsDraft, value: string | boolean) {
+        setImageDescriptionDraft(current => ({ ...current, [field]: value }))
+    }
 }
 
 function createDefaultSettingsDraft(): TtsSettingsDraft {
@@ -273,6 +325,17 @@ function createDefaultServerDraft(): ServerSettingsDraft {
         listenOnAllInterfaces: true,
         password: '',
         passwordConfigured: false
+    }
+}
+
+function createDefaultImageDescriptionDraft(): ImageDescriptionSettingsDraft {
+    return {
+        enabled: false,
+        provider: 'openai',
+        apiKey: '',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-4.1-mini',
+        prompt: 'Describe this image briefly and factually for podcast narration. Focus on visible details only.'
     }
 }
 
@@ -327,7 +390,7 @@ function ProviderPanel(props: {
     </div>
 }
 
-function validateSettings(settings: TtsSettingsDraft) {
+function validateSettings(settings: TtsSettingsDraft, imageDescription: ImageDescriptionSettingsDraft) {
     let providers: Array<{ name: string; value: ProviderSettingsDraft }> = [
         { name: 'Inworld', value: settings.inworld },
         { name: 'OpenAI', value: settings.openai },
@@ -343,7 +406,100 @@ function validateSettings(settings: TtsSettingsDraft) {
             return `${provider.name} base URL is required`
     }
 
+    if (!imageDescription.baseUrl.trim())
+        return 'Image description base URL is required'
+
+    if (!imageDescription.model.trim())
+        return 'Image description model is required'
+
+    if (!imageDescription.prompt.trim())
+        return 'Image description prompt is required'
+
+    if (imageDescription.enabled && !imageDescription.apiKey.trim())
+        return 'Image description API key is required when enabled'
+
     return ''
+}
+
+function ImageDescriptionPanel(props: {
+    value: ImageDescriptionSettingsDraft
+    onChange: (field: keyof ImageDescriptionSettingsDraft, value: string | boolean) => void
+}) {
+    return <div className={classes(panelContainerStyle)}>
+        <div className={classes(panelHeaderStyle)}>
+            <h3 className={classes(panelTitleStyle)}>Image Description Configuration</h3>
+            <label className={classes(toggleLabelStyle)} title={props.value.enabled ? "Disable image descriptions" : "Enable image descriptions"}>
+                <input
+                    type="checkbox"
+                    className={classes(hiddenCheckboxStyle)}
+                    checked={props.value.enabled}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => props.onChange('enabled', event.target.checked)}
+                />
+                <div className={classes([toggleTrackStyle, props.value.enabled && activeToggleTrackStyle])}>
+                    <div className={classes([toggleThumbStyle, props.value.enabled && activeToggleThumbStyle])} />
+                </div>
+                <span className={classes(toggleTextStyle)}>{props.value.enabled ? 'Enabled' : 'Disabled'}</span>
+            </label>
+        </div>
+
+        <div className={classes(fieldsGridStyle)}>
+            <label className={classes(fieldGroupStyle)}>
+                <span className={classes(labelStyle)}>Provider</span>
+                <input
+                    className={classes(inputStyle)}
+                    type="text"
+                    value="OpenAI-compatible"
+                    disabled
+                />
+            </label>
+
+            <label className={classes(fieldGroupStyle)}>
+                <span className={classes(labelStyle)}>API Key</span>
+                <input
+                    className={classes(inputStyle)}
+                    type="password"
+                    value={props.value.apiKey}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => props.onChange('apiKey', event.target.value)}
+                    placeholder="Enter API key"
+                    autoComplete="off"
+                    spellCheck="false"
+                />
+            </label>
+
+            <label className={classes(fieldGroupStyle)}>
+                <span className={classes(labelStyle)}>Base URL</span>
+                <input
+                    className={classes(inputStyle)}
+                    type="text"
+                    value={props.value.baseUrl}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => props.onChange('baseUrl', event.target.value)}
+                    placeholder="https://api.openai.com/v1"
+                />
+            </label>
+
+            <label className={classes(fieldGroupStyle)}>
+                <span className={classes(labelStyle)}>Model</span>
+                <input
+                    className={classes(inputStyle)}
+                    type="text"
+                    value={props.value.model}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => props.onChange('model', event.target.value)}
+                    placeholder="gpt-4.1-mini"
+                />
+            </label>
+
+            <label className={classes(fieldGroupStyle)}>
+                <span className={classes(labelStyle)}>System Prompt</span>
+                <input
+                    className={classes(inputStyle)}
+                    type="text"
+                    value={props.value.prompt}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => props.onChange('prompt', event.target.value)}
+                    placeholder="Describe this image briefly..."
+                />
+            </label>
+        </div>
+    </div>
 }
 
 function ServerPanel(props: {
@@ -567,6 +723,10 @@ let statusDotStyle = style('statusDot', {
     backgroundColor: 'var(--muted)',
     flexShrink: 0,
     transition: 'background-color 0.2s'
+})
+
+let hiddenStatusDotStyle = style('hiddenStatusDot', {
+    opacity: 0
 })
 
 let activeDotStyle = style('activeDot', {

@@ -101,7 +101,7 @@ function parseRssItem(item: any): ParsedFeedArticle | null {
         sourceUrl,
         title: cleanText(textOf(item.title)) || "Untitled episode",
         summary: cleanText(textOf(item.description)) || null,
-        content: cleanText(textOf(item['content:encoded']) || textOf(item.content)) || null,
+        content: textOf(item['content:encoded']) || textOf(item.content) || null,
         guid: textOf(item.guid) || null,
         publishedAt: normalizeDate(textOf(item.pubDate) || textOf(item.published) || textOf(item.updated)),
     }
@@ -116,7 +116,7 @@ function parseAtomEntry(entry: any): ParsedFeedArticle | null {
         sourceUrl,
         title: cleanText(textOf(entry.title)) || "Untitled episode",
         summary: cleanText(textOf(entry.summary)) || null,
-        content: cleanText(textOf(entry.content)) || null,
+        content: textOf(entry.content) || null,
         guid: textOf(entry.id) || sourceUrl,
         publishedAt: normalizeDate(textOf(entry.published) || textOf(entry.updated)),
     }

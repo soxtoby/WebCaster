@@ -5,7 +5,7 @@ import { elevenLabsDefaults } from "../tts/elevenlabs"
 import { inworldDefaults } from "../tts/inworld"
 import { lemonFoxDefaults } from "../tts/lemonfox"
 import { openAiDefaults } from "../tts/openai"
-import { defaultServerSettings, ttsProviders, type ServerSettings, type SettingsState, type TtsProvider, type VoiceRecord } from "./settings-types"
+import { defaultImageDescriptionSettings, defaultServerSettings, imageDescriptionProviders, ttsProviders, type ImageDescriptionProvider, type ImageDescriptionSettings, type ServerSettings, type SettingsState, type TtsProvider, type VoiceRecord } from "./settings-types"
 
 export function listProviderSettings(): SettingsState {
     let rows = database.select().from(ttsProviderSettingsTable).all()
@@ -46,6 +46,34 @@ export function saveProviderSettings(settings: SettingsState) {
             })
             .run()
     }
+}
+
+export function listImageDescriptionSettings(): ImageDescriptionSettings {
+    let rows = database.select().from(appSettingsTable).all()
+    let map = new Map(rows.map(r => [r.key, r.value]))
+
+    let provider = map.get('imageDescription.provider') || defaultImageDescriptionSettings.provider
+    let parsedProvider = isImageDescriptionProvider(provider) ? provider : defaultImageDescriptionSettings.provider
+
+    return {
+        enabled: map.get('imageDescription.enabled') == 'true',
+        provider: parsedProvider,
+        apiKey: map.get('imageDescription.apiKey') || '',
+        baseUrl: map.get('imageDescription.baseUrl') || defaultImageDescriptionSettings.baseUrl,
+        model: map.get('imageDescription.model') || defaultImageDescriptionSettings.model,
+        prompt: map.get('imageDescription.prompt') || defaultImageDescriptionSettings.prompt
+    }
+}
+
+export function saveImageDescriptionSettings(settings: ImageDescriptionSettings) {
+    upsertAppSettings([
+        { key: 'imageDescription.enabled', value: String(settings.enabled) },
+        { key: 'imageDescription.provider', value: settings.provider },
+        { key: 'imageDescription.apiKey', value: settings.apiKey },
+        { key: 'imageDescription.baseUrl', value: settings.baseUrl },
+        { key: 'imageDescription.model', value: settings.model },
+        { key: 'imageDescription.prompt', value: settings.prompt }
+    ])
 }
 
 export function listCachedVoices() {
@@ -117,12 +145,16 @@ export function getServerSettings(): ServerSettings {
 }
 
 export function saveServerSettings(settings: ServerSettings) {
-    let entries: Array<{ key: string, value: string }> = [
+    upsertAppSettings([
         { key: 'server.hostname', value: settings.hostname },
         { key: 'server.port', value: String(settings.port) },
         { key: 'server.listenOnAllInterfaces', value: String(settings.listenOnAllInterfaces) }
-    ]
+    ])
 
+    cachedBaseUrl = baseUrl(settings)
+}
+
+function upsertAppSettings(entries: Array<{ key: string, value: string }>) {
     for (let entry of entries) {
         database
             .insert(appSettingsTable)
@@ -136,8 +168,6 @@ export function saveServerSettings(settings: ServerSettings) {
             })
             .run()
     }
-
-    cachedBaseUrl = baseUrl(settings)
 }
 
 function baseUrl(settings: ServerSettings) {
@@ -155,4 +185,8 @@ function createDefaultSettings(): SettingsState {
 
 function isProviderType(value: string): value is TtsProvider {
     return ttsProviders.includes(value as TtsProvider)
+}
+
+function isImageDescriptionProvider(value: string): value is ImageDescriptionProvider {
+    return imageDescriptionProviders.includes(value as ImageDescriptionProvider)
 }

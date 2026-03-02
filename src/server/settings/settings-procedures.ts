@@ -1,12 +1,13 @@
 import { updatePassword } from "../auth/auth"
 import { restartServer } from "../serve"
 import { procedure } from "../trpc/trpc"
-import { getServerBaseUrl, getServerSettings, listProviderSettings, saveProviderSettings, saveServerSettings } from "./settings-repository"
+import { getServerBaseUrl, getServerSettings, listImageDescriptionSettings, listProviderSettings, saveImageDescriptionSettings, saveProviderSettings, saveServerSettings } from "./settings-repository"
 import { SettingsInput } from "./settings-types"
 
 export const get = procedure
     .query(() => ({
         settings: listProviderSettings(),
+        imageDescription: listImageDescriptionSettings(),
         server: getServerSettings()
     }))
 
@@ -14,6 +15,7 @@ export const save = procedure
     .input(SettingsInput)
     .mutation(({ input }) => {
         saveProviderSettings(input.settings)
+        saveImageDescriptionSettings(input.imageDescription)
 
         if (input.server.password)
             updatePassword(input.server.password)
@@ -40,6 +42,7 @@ export const save = procedure
 
         return {
             settings: listProviderSettings(),
+            imageDescription: listImageDescriptionSettings(),
             server: getServerSettings(),
             redirectUrl
         }

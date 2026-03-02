@@ -7,6 +7,7 @@ import { getCachedVoiceById, getServerBaseUrl, listProviderSettings } from "../s
 import { type TtsProvider } from "../settings/settings-types"
 import { streamSpeech, type StreamedAudio } from "../tts/tts"
 import { fetchFeed, type ParsedFeedArticle } from "./feed-parsing"
+import { replaceImagesWithDescriptions } from "./image-description"
 
 type EpisodeView = {
     episodeKey: string
@@ -298,8 +299,10 @@ async function resolveArticleText(feed: Feed, article: Article) {
     if (feed.contentSource == 'source_page')
         return await readSourcePage(article.sourceUrl, article)
 
-    let fallback = article.summary || article.title
-    return [article.title, article.content || '', fallback].join('\n\n').trim()
+    let preparedContent = await prepareNarrationText(article.content || '', article.sourceUrl)
+        || await prepareNarrationText((article.summary || ''), article.sourceUrl)
+
+    return [article.title, preparedContent].join('\n\n').trim()
 }
 
 async function readSourcePage(sourceUrl: string, article: Article) {
@@ -309,7 +312,7 @@ async function readSourcePage(sourceUrl: string, article: Article) {
             return fallbackArticleText(article)
 
         let html = await response.text()
-        let extracted = extractReadableText(html)
+        let extracted = await extractReadableText(html, sourceUrl)
         if (!extracted)
             return fallbackArticleText(article)
 
@@ -324,7 +327,7 @@ function fallbackArticleText(article: Article) {
     return [article.title, article.content || article.summary || ''].join('\n\n').trim()
 }
 
-function extractReadableText(html: string) {
+async function extractReadableText(html: string, sourceUrl: string) {
     let withoutScripts = html
         .replace(/<script[\s\S]*?<\/script>/gi, ' ')
         .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -333,8 +336,9 @@ function extractReadableText(html: string) {
     let articleMatch = withoutScripts.match(/<article[\s\S]*?<\/article>/i)
     let mainMatch = withoutScripts.match(/<main[\s\S]*?<\/main>/i)
     let candidate = articleMatch?.[0] || mainMatch?.[0] || withoutScripts
+    let withImageDescriptions = await replaceImagesWithDescriptions(candidate, sourceUrl)
 
-    let text = candidate
+    let text = withImageDescriptions
         .replace(/<\/?(p|h1|h2|h3|h4|h5|h6|li|blockquote|section|article|main|br)[^>]*>/gi, '\n')
         .replace(/<[^>]+>/g, ' ')
         .replace(/&nbsp;/g, ' ')
@@ -351,6 +355,27 @@ function extractReadableText(html: string) {
         return ''
 
     return text
+}
+
+async function prepareNarrationText(value: string, sourceUrl: string) {
+    let withImageDescriptions = await replaceImagesWithDescriptions(value, sourceUrl)
+
+    return withImageDescriptions
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+        .replace(/<\/?(p|h1|h2|h3|h4|h5|h6|li|blockquote|section|article|main|br)[^>]*>/gi, '\n')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&#39;|&apos;/g, "'")
+        .replace(/&quot;/g, '"')
+        .replace(/\s+\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .replace(/\s+/g, ' ')
+        .trim()
 }
 
 function ensureStoredEpisodeKey(article: Article, episodeKey: string) {

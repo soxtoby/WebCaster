@@ -4,6 +4,7 @@
 
 ### Added
 - Confirmation prompt when deleting a feed.
+- Option to provide an OpenAI API key to produce audio descriptions for images.
 
 ### Fixed
 - Gender in voice description is detected instead of guessing from name.
