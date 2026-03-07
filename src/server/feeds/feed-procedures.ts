@@ -1,14 +1,14 @@
 import { TRPCError } from "@trpc/server"
 import { procedure } from "../trpc/trpc"
 import { fetchFeed, type ParsedFeedArticle } from "./feed-parsing"
-import { insertFeedArticles, listFeedEpisodes } from "./feed-podcast"
-import { FeedIdInput, FeedInput, FeedUpdateInput } from "./feed-types"
+import { insertFeedArticles, listFeedEpisodes, setEpisodeVoiceOverride } from "./feed-podcast"
+import { EpisodeVoiceInput, FeedIdInput, FeedInput, FeedUpdateInput } from "./feed-types"
 import { createFeed as createFeedRecord, deleteFeedById as deleteFeedRecordById, getFeedById as getFeedRecordById, listFeeds as listFeedRecords, updateFeedById as updateFeedRecordById } from "./feed-repository"
 
 type EnrichedFeedInput = FeedInput & { description?: string | null; imageUrl?: string | null }
 
 export const list = procedure
-    .query(() => ({ feeds: listFeedRecords() }));
+    .query(() => ({ feeds: listFeedRecords() }))
 
 export const create = procedure
     .input(FeedInput)
@@ -67,6 +67,26 @@ export const episodes = procedure
             podcastUrl: `/feed/${feed.podcastSlug}`,
             episodes: await listFeedEpisodes(feed.id)
         }
+    })
+
+export const setEpisodeVoice = procedure
+    .input(EpisodeVoiceInput)
+    .mutation(async ({ input }) => {
+        let voiceId = input.voice || null
+        let result = await setEpisodeVoiceOverride(input.id, input.episodeKey, voiceId)
+
+        if (!result.updated) {
+            if (result.reason == 'feed_not_found')
+                throw new TRPCError({ code: 'NOT_FOUND', message: 'Feed not found' })
+
+            if (result.reason == 'episode_not_found')
+                throw new TRPCError({ code: 'NOT_FOUND', message: 'Episode not found' })
+
+            if (result.reason == 'voice_not_found')
+                throw new TRPCError({ code: 'BAD_REQUEST', message: 'Voice not found' })
+        }
+
+        return { success: true }
     })
 
 type EnrichResult = { enriched: EnrichedFeedInput; articles: ParsedFeedArticle[] }
@@ -128,3 +148,4 @@ function buildFallbackFeedName(rssUrl: string) {
 
     return ''
 }
+

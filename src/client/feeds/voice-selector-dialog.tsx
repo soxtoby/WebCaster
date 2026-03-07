@@ -151,7 +151,7 @@ export function VoiceSelectorDialog(props: {
                 <button className={classes(buttonStyle)} commandFor={props.id} command="close" type="button">Cancel</button>
                 <button
                     className={classes([buttonStyle, primaryButtonStyle])}
-                    disabled={!pendingVoiceId || pendingVoiceId == props.value}
+                    disabled={pendingVoiceId == props.value}
                     type="submit"
                 >
                     Save
@@ -452,3 +452,4 @@ let voicePreviewMetaStyle = style('voiceSelectorDialogPreviewMeta', {
     fontSize: 12,
     color: 'var(--muted)'
 })
+

@@ -25,6 +25,7 @@ type FeedEpisode = {
     errorMessage: string | null
     audioReady: boolean
     audioUrl: string
+    voice: string | null
 }
 
 export function FeedManagerPage() {
@@ -37,6 +38,7 @@ export function FeedManagerPage() {
     let [episodes, setEpisodes] = useState<FeedEpisode[]>([])
     let [activeEpisodeKey, setActiveEpisodeKey] = useState<string | null>(null)
     let [activeEpisodeAudioUrl, setActiveEpisodeAudioUrl] = useState('')
+    let [updatingEpisodeVoiceKey, setUpdatingEpisodeVoiceKey] = useState<string | null>(null)
 
     let [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>([])
 
@@ -200,8 +202,10 @@ export function FeedManagerPage() {
                         setActiveEpisodeKey(episode.episodeKey)
                         setActiveEpisodeAudioUrl(episode.audioUrl)
                     }}
+                    onEpisodeVoiceChange={(episodeKey, voice) => void updateEpisodeVoice(episodeKey, voice)}
                     onSubmit={() => saveFeed()}
                     status={status}
+                    updatingEpisodeVoiceKey={updatingEpisodeVoiceKey}
                     voiceOptions={resolvedVoiceOptions}
                 />
                 : null}
@@ -274,6 +278,31 @@ export function FeedManagerPage() {
         setStatus('Feed deleted')
     }
 
+    async function updateEpisodeVoice(episodeKey: string, voice: string) {
+        if (!selectedFeed)
+            return
+
+        setError('')
+        setStatus('')
+        setUpdatingEpisodeVoiceKey(episodeKey)
+
+        try {
+            await api.feeds.setEpisodeVoice.mutate({ id: selectedFeed.id, episodeKey, voice })
+            setStatus(voice ? 'Episode voice updated' : 'Episode voice reset to feed default')
+
+            if (activeEpisodeKey == episodeKey)
+                setActiveEpisodeAudioUrl(`${window.location.origin}/feed/${selectedFeed.podcastSlug}/${episodeKey}?v=${Date.now()}`)
+
+            await loadEpisodes(selectedFeed.id)
+        }
+        catch (cause) {
+            let message = cause instanceof Error ? cause.message : 'Failed to update episode voice'
+            setError(message)
+        }
+        finally {
+            setUpdatingEpisodeVoiceKey(null)
+        }
+    }
     async function loadEpisodes(feedId: number) {
         try {
             let response = await api.feeds.episodes.query({ id: feedId })
@@ -591,3 +620,4 @@ let errorStyle = style('error', {
     margin: [6, 0, 0, 0],
     color: 'var(--danger)'
 })
+

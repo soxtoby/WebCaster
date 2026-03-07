@@ -32,10 +32,8 @@ export function VoiceSelectorField(props: {
         >
             <span className={classes(inputStyle)}>{voiceSummaryText}</span>
             <span className={classes(iconStyle)}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                    <circle cx="5" cy="12" r="2" />
-                    <circle cx="12" cy="12" r="2" />
-                    <circle cx="19" cy="12" r="2" />
+                <svg className={classes(iconGlyphStyle)} viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="currentColor" d="M23 9q0 1.725-.612 3.288t-1.663 2.837q-.3.35-.75.375t-.8-.325q-.325-.325-.3-.775t.3-.825q.75-.95 1.163-2.125T20.75 9t-.412-2.425t-1.163-2.1q-.3-.375-.312-.825t.312-.8t.788-.338t.762.363q1.05 1.275 1.663 2.838T23 9m-4.55 0q0 .8-.25 1.538t-.7 1.362q-.275.375-.737.388t-.813-.338q-.325-.325-.337-.787t.212-.888q.15-.275.238-.6T16.15 9t-.088-.675t-.237-.625q-.225-.425-.213-.875t.338-.775q.35-.35.813-.338t.737.388q.45.625.7 1.363T18.45 9M9 13q-1.65 0-2.825-1.175T5 9t1.175-2.825T9 5t2.825 1.175T13 9t-1.175 2.825T9 13m-8 6v-.8q0-.825.425-1.55t1.175-1.1q1.275-.65 2.875-1.1T9 14t3.525.45t2.875 1.1q.75.375 1.175 1.1T17 18.2v.8q0 .825-.587 1.413T15 21H3q-.825 0-1.412-.587T1 19" />
                 </svg>
             </span>
         </button>
@@ -108,7 +106,15 @@ let iconStyle = style('voiceSelectorIcon', {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    lineHeight: 0,
     flexShrink: 0
+})
+
+let iconGlyphStyle = style('voiceSelectorIconGlyph', {
+    width: 20,
+    height: 20,
+    transform: 'translateY(-0.5px)',
+    display: 'block'
 })
 
 let voicePickerInlineStyle = style('voiceSelectorInline', {

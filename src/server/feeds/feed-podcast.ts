@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm"
-import { mkdir } from "node:fs/promises"
+import { mkdir, unlink } from "node:fs/promises"
 import { database } from "../db"
 import { articlesTable, feedsTable, type Article, type Feed } from "../db/schema"
 import { episodePath, podcastDirectory } from "../paths"
@@ -17,6 +17,7 @@ type EpisodeView = {
     publishedAt: string | null
     status: string
     errorMessage: string | null
+    voice: string | null
     audioReady: boolean
 }
 
@@ -56,6 +57,7 @@ export async function listFeedEpisodes(feedId: number): Promise<EpisodeView[]> {
             title: articlesTable.title,
             sourceUrl: articlesTable.sourceUrl,
             publishedAt: articlesTable.publishedAt,
+            voice: articlesTable.voice,
             status: articlesTable.status,
             errorMessage: articlesTable.errorMessage
         })
@@ -75,6 +77,7 @@ export async function listFeedEpisodes(feedId: number): Promise<EpisodeView[]> {
             publishedAt: row.publishedAt,
             status: row.status,
             errorMessage: row.errorMessage,
+            voice: row.voice,
             audioReady
         }
     }))
@@ -130,6 +133,41 @@ export async function streamEpisodeAudio(feed: Feed, episodeKey: string): Promis
     })
 }
 
+
+export async function setEpisodeVoiceOverride(feedId: number, episodeKey: string, voiceId: string | null) {
+    let feed = database.select().from(feedsTable).where(eq(feedsTable.id, feedId)).get()
+    if (!feed)
+        return { updated: false, reason: 'feed_not_found' as const }
+
+    let article = findArticleByEpisodeKey(feed.id, episodeKey)
+    if (!article)
+        return { updated: false, reason: 'episode_not_found' as const }
+
+    if (voiceId && !getCachedVoiceById(voiceId))
+        return { updated: false, reason: 'voice_not_found' as const }
+
+    database
+        .update(articlesTable)
+        .set({
+            voice: voiceId,
+            status: 'pending',
+            errorMessage: null,
+            audioUrl: null,
+            updatedAt: sql`CURRENT_TIMESTAMP`
+        })
+        .where(and(eq(articlesTable.feedId, feed.id), eq(articlesTable.episodeKey, article.episodeKey)))
+        .run()
+
+    let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
+
+    try {
+        await unlink(resolvedPath)
+    }
+    catch {
+    }
+
+    return { updated: true as const }
+}
 async function syncAllFeeds(limit: number) {
     let feeds = database.select().from(feedsTable).all()
     for (let feed of feeds)
@@ -150,6 +188,7 @@ export function insertFeedArticles(feedId: number, generationMode: string, conte
                 title: item.title,
                 summary: item.summary,
                 content: item.content,
+                voice: null,
                 status: 'pending',
                 generationMode,
                 contentSource,
@@ -210,7 +249,8 @@ async function createAudioStream(feed: Feed, article: Article): Promise<Streamed
     if (!text.trim())
         throw new Error('Article text is empty')
 
-    let voice = getCachedVoiceById(feed.voice)
+    let selectedVoiceId = article.voice || feed.voice
+    let voice = getCachedVoiceById(selectedVoiceId)
     if (!voice)
         throw new Error('Selected voice was not found in voice cache')
 
@@ -495,3 +535,4 @@ function hashText(value: string) {
 
     return Math.abs(hash >>> 0).toString(36)
 }
+

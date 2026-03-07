@@ -1,5 +1,6 @@
 import { type ChangeEvent, useState } from "react"
 import { classes, style } from "stylemap"
+import { VoiceSelectorDialog } from "./voice-selector-dialog"
 import { VoiceSelectorField, type VoiceOption } from "./voice-selector-field"
 
 type FeedDraft = {
@@ -19,6 +20,7 @@ type Episode = {
     errorMessage: string | null
     audioReady: boolean
     audioUrl: string
+    voice: string | null
 }
 
 export function FeedDetailsSection(props: {
@@ -33,8 +35,10 @@ export function FeedDetailsSection(props: {
     onDelete: () => void
     onDraftChange: (field: keyof FeedDraft, value: string) => void
     onPlayEpisode: (episode: Episode) => void
+    onEpisodeVoiceChange: (episodeKey: string, voice: string) => void
     onSubmit: () => void
     status: string
+    updatingEpisodeVoiceKey: string | null
     voiceOptions: VoiceOption[]
 }) {
     let [isSettingsExpanded, setIsSettingsExpanded] = useState(!props.isEditing)
@@ -163,7 +167,8 @@ export function FeedDetailsSection(props: {
                                 <tr>
                                     <th className={classes([thStyle, thTitleStyle])}>Episode Title</th>
                                     <th className={classes([thStyle, thDateStyle])}>Published</th>
-                                    <th className={classes(thStyle)}>Status</th>
+                                    <th className={classes([thStyle, thStatusStyle])}>Status</th>
+                                    <th className={classes([thStyle, thVoiceStyle])}>Voice</th>
                                     <th className={classes([thStyle, thAudioStyle])}>Audio</th>
                                 </tr>
                             </thead>
@@ -191,6 +196,33 @@ export function FeedDetailsSection(props: {
                                                 <span className={classes([statusBadgeStyle, episode.status === 'completed' && completedBadgeStyle])}>
                                                     {episode.status.replace('_', ' ')}
                                                 </span>
+                                            </td>
+                                            <td className={classes([tdStyle, tdVoiceStyle])}>
+                                                <button
+                                                    className={classes(episodeVoiceButtonStyle)}
+                                                    commandFor={buildEpisodeVoiceDialogId(episode.episodeKey)}
+                                                    command="show-modal"
+                                                    disabled={props.updatingEpisodeVoiceKey == episode.episodeKey}
+                                                    aria-label={buildEpisodeVoiceAriaLabel(props.voiceOptions, episode.voice, props.updatingEpisodeVoiceKey == episode.episodeKey)}
+                                                    type="button"
+                                                >
+                                                    {props.updatingEpisodeVoiceKey == episode.episodeKey
+                                                        ? 'Saving...'
+                                                        : <span className={classes([episodeVoiceButtonInnerStyle, !episode.voice && episodeVoiceButtonIconOnlyStyle])}>
+                                                            <svg className={classes(episodeVoiceIconStyle)} viewBox="0 0 24 24" aria-hidden="true">
+                                                                <path fill="currentColor" d="M23 9q0 1.725-.612 3.288t-1.663 2.837q-.3.35-.75.375t-.8-.325q-.325-.325-.3-.775t.3-.825q.75-.95 1.163-2.125T20.75 9t-.412-2.425t-1.163-2.1q-.3-.375-.312-.825t.312-.8t.788-.338t.762.363q1.05 1.275 1.663 2.838T23 9m-4.55 0q0 .8-.25 1.538t-.7 1.362q-.275.375-.737.388t-.813-.338q-.325-.325-.337-.787t.212-.888q.15-.275.238-.6T16.15 9t-.088-.675t-.237-.625q-.225-.425-.213-.875t.338-.775q.35-.35.813-.338t.737.388q.45.625.7 1.363T18.45 9M9 13q-1.65 0-2.825-1.175T5 9t1.175-2.825T9 5t2.825 1.175T13 9t-1.175 2.825T9 13m-8 6v-.8q0-.825.425-1.55t1.175-1.1q1.275-.65 2.875-1.1T9 14t3.525.45t2.875 1.1q.75.375 1.175 1.1T17 18.2v.8q0 .825-.587 1.413T15 21H3q-.825 0-1.412-.587T1 19" />
+                                                            </svg>
+                                                            {episode.voice
+                                                                ? <span className={classes(episodeVoiceTextStyle)}>{buildEpisodeVoiceSummary(props.voiceOptions, episode.voice)}</span>
+                                                                : null}
+                                                        </span>}
+                                                </button>
+                                                <VoiceSelectorDialog
+                                                    id={buildEpisodeVoiceDialogId(episode.episodeKey)}
+                                                    value={episode.voice || ''}
+                                                    options={buildEpisodeVoiceDialogOptions(props.voiceOptions, episode.voice)}
+                                                    onSave={value => props.onEpisodeVoiceChange(episode.episodeKey, value)}
+                                                />
                                             </td>
                                             <td className={classes([tdStyle, tdAudioStyle])}>
                                                 {isPlayingEpisode && props.activeEpisodeAudioUrl ? (
@@ -223,6 +255,59 @@ export function FeedDetailsSection(props: {
             </div>
         )}
     </section>
+}
+
+function buildEpisodeVoiceDialogId(episodeKey: string) {
+    return `episode-voice-${episodeKey}`
+}
+
+function buildEpisodeVoiceDialogOptions(options: VoiceOption[], selectedVoiceId: string | null) {
+    let filtered = [...options]
+
+    if (!filtered.some(option => option.id == ''))
+        filtered.unshift({
+            id: '',
+            name: 'Default',
+            description: 'Use feed voice',
+            gender: 'unknown',
+            provider: 'default'
+        })
+
+    if (selectedVoiceId && !filtered.some(option => option.id == selectedVoiceId))
+        filtered.unshift({
+            id: selectedVoiceId,
+            name: 'Saved voice',
+            description: 'Saved voice',
+            gender: 'unknown',
+            provider: 'saved'
+        })
+
+    return filtered
+}
+
+function buildEpisodeVoiceSummary(options: VoiceOption[], selectedVoiceId: string | null) {
+    if (!selectedVoiceId)
+        return ''
+
+    let selected = options.find(option => option.id == selectedVoiceId)
+    if (!selected)
+        return 'Saved voice'
+
+    return selected.name
+}
+
+function buildEpisodeVoiceAriaLabel(options: VoiceOption[], selectedVoiceId: string | null, isSaving: boolean) {
+    if (isSaving)
+        return 'Saving voice'
+
+    if (!selectedVoiceId)
+        return 'Choose episode voice (currently default)'
+
+    let selected = options.find(option => option.id == selectedVoiceId)
+    if (!selected)
+        return 'Choose episode voice (currently saved voice)'
+
+    return `Choose episode voice (currently ${selected.name})`
 }
 
 function Field(props: {
@@ -418,7 +503,7 @@ let episodesAreaStyle = style('episodesArea', {
 
 let episodesListContainerStyle = style('episodesListContainer', {
     flex: 1,
-    overflowY: 'auto',
+    overflow: 'auto',
     padding: 0
 })
 
@@ -426,7 +511,8 @@ let episodesTableStyle = style('table', {
     width: '100%',
     borderCollapse: 'collapse',
     textAlign: 'left',
-    tableLayout: 'fixed'
+    tableLayout: 'auto',
+    minWidth: 900
 })
 
 let emptyEpisodesStyle = style('emptyEpisodes', {
@@ -454,6 +540,14 @@ let thTitleStyle = style('thTitle', {
 
 let thDateStyle = style('thDate', {
     width: '15%'
+})
+
+let thStatusStyle = style('thStatus', {
+    width: 130
+})
+
+let thVoiceStyle = style('thVoice', {
+    width: 180
 })
 
 let thAudioStyle = style('thAudio', {
@@ -496,8 +590,57 @@ let tdDateStyle = style('tdDate', {
     color: 'var(--muted)'
 })
 
+let tdVoiceStyle = style('tdVoice', {
+    minWidth: 0
+})
+
 let tdAudioStyle = style('tdAudio', {
     textAlign: 'right'
+})
+
+let episodeVoiceButtonStyle = style('episodeVoiceButton', {
+    display: 'flex',
+    alignItems: 'center',
+    maxWidth: '100%',
+    padding: '6px 10px',
+    border: '1px solid var(--border)',
+    borderRadius: 6,
+    backgroundColor: 'var(--bg)',
+    color: 'var(--text)',
+    fontSize: 12,
+    minHeight: 30,
+    textAlign: 'left',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis'
+})
+
+let episodeVoiceButtonInnerStyle = style('episodeVoiceButtonInner', {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    maxWidth: '100%'
+})
+
+let episodeVoiceButtonIconOnlyStyle = style('episodeVoiceButtonIconOnly', {
+    width: '100%',
+    justifyContent: 'center'
+})
+
+let episodeVoiceIconStyle = style('episodeVoiceIcon', {
+    width: 18,
+    height: 18,
+    display: 'block',
+    lineHeight: 0,
+    transform: 'translateY(-0.5px)',
+    flexShrink: 0
+})
+
+let episodeVoiceTextStyle = style('episodeVoiceText', {
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis'
 })
 
 let episodeTitleTextStyle = style('episodeTitle', {
@@ -610,3 +753,14 @@ let errorStyle = style('detailsError', {
     fontSize: 13,
     color: 'var(--danger)'
 })
+
+
+
+
+
+
+
+
+
+
+
