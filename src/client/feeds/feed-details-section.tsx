@@ -1,5 +1,6 @@
 import { type ChangeEvent, useState } from "react"
 import { classes, style } from "stylemap"
+import { buildEpisodeTranscriptDialogId, EpisodeTranscriptDialog } from "./episode-transcript-dialog"
 import { VoiceSelectorDialog } from "./voice-selector-dialog"
 import { VoiceSelectorField, type VoiceOption } from "./voice-selector-field"
 
@@ -29,6 +30,7 @@ export function FeedDetailsSection(props: {
     draft: FeedDraft
     episodes: Episode[]
     error: string
+    feedId: number | null
     isEditing: boolean
     podcastUrl: string
     onCancel: () => void
@@ -169,6 +171,7 @@ export function FeedDetailsSection(props: {
                                     <th className={classes([thStyle, thDateStyle])}>Published</th>
                                     <th className={classes([thStyle, thStatusStyle])}>Status</th>
                                     <th className={classes([thStyle, thVoiceStyle])}>Voice</th>
+                                    <th className={classes([thStyle, thTranscriptStyle])}>Transcript</th>
                                     <th className={classes([thStyle, thAudioStyle])}>Audio</th>
                                 </tr>
                             </thead>
@@ -223,6 +226,26 @@ export function FeedDetailsSection(props: {
                                                     options={buildEpisodeVoiceDialogOptions(props.voiceOptions, episode.voice)}
                                                     onSave={value => props.onEpisodeVoiceChange(episode.episodeKey, value)}
                                                 />
+                                            </td>
+                                            <td className={classes([tdStyle, tdTranscriptStyle])}>
+                                                {props.feedId != null
+                                                    ? <>
+                                                        <button
+                                                            className={classes(transcriptButtonStyle)}
+                                                            commandFor={buildEpisodeTranscriptDialogId(episode.episodeKey)}
+                                                            command="show-modal"
+                                                            type="button"
+                                                            aria-label="View transcript"
+                                                        >
+                                                            View
+                                                        </button>
+                                                        <EpisodeTranscriptDialog
+                                                            feedId={props.feedId}
+                                                            feedTitle={props.draft.name || 'Unnamed Feed'}
+                                                            episode={{ episodeKey: episode.episodeKey, title: episode.title }}
+                                                        />
+                                                    </>
+                                                    : null}
                                             </td>
                                             <td className={classes([tdStyle, tdAudioStyle])}>
                                                 {isPlayingEpisode && props.activeEpisodeAudioUrl ? (
@@ -550,6 +573,11 @@ let thVoiceStyle = style('thVoice', {
     width: 180
 })
 
+let thTranscriptStyle = style('thTranscript', {
+    width: 120,
+    textAlign: 'center'
+})
+
 let thAudioStyle = style('thAudio', {
     width: '240px',
     textAlign: 'right'
@@ -592,6 +620,28 @@ let tdDateStyle = style('tdDate', {
 
 let tdVoiceStyle = style('tdVoice', {
     minWidth: 0
+})
+
+let tdTranscriptStyle = style('tdTranscript', {
+    textAlign: 'center'
+})
+
+let transcriptButtonStyle = style('transcriptButton', {
+    border: '1px solid var(--border)',
+    backgroundColor: 'var(--panel)',
+    color: 'var(--text)',
+    padding: '4px 10px',
+    borderRadius: 14,
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'all 0.1s',
+    $: {
+        '&:hover': {
+            borderColor: 'var(--accent)',
+            color: 'var(--accent)'
+        }
+    }
 })
 
 let tdAudioStyle = style('tdAudio', {

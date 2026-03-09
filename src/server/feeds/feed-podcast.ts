@@ -7,7 +7,7 @@ import { getCachedVoiceById, getServerBaseUrl, listProviderSettings } from "../s
 import { type TtsProvider } from "../settings/settings-types"
 import { streamSpeech, type StreamedAudio } from "../tts/tts"
 import { fetchFeed, type ParsedFeedArticle } from "./feed-parsing"
-import { replaceImagesWithDescriptions } from "./image-description"
+import { replaceImagesWithDescriptionsWithOptions } from "./image-description"
 
 type EpisodeView = {
     episodeKey: string
@@ -168,6 +168,26 @@ export async function setEpisodeVoiceOverride(feedId: number, episodeKey: string
 
     return { updated: true as const }
 }
+
+export async function getEpisodeTranscript(feedId: number, episodeKey: string, forceRegenerateImageDescriptions = false) {
+    let feed = database.select().from(feedsTable).where(eq(feedsTable.id, feedId)).get()
+    if (!feed)
+        return { ok: false as const, reason: 'feed_not_found' as const }
+
+    let article = findArticleByEpisodeKey(feed.id, episodeKey)
+    if (!article)
+        return { ok: false as const, reason: 'episode_not_found' as const }
+
+    let transcript = await resolveArticleText(feed, article, { forceRegenerateImageDescriptions })
+
+    return {
+        ok: true as const,
+        transcript,
+        title: article.title,
+        sourceUrl: article.sourceUrl
+    }
+}
+
 async function syncAllFeeds(limit: number) {
     let feeds = database.select().from(feedsTable).all()
     for (let feed of feeds)
@@ -245,7 +265,7 @@ async function generateAndStoreAudio(feed: Feed, article: Article) {
 }
 
 async function createAudioStream(feed: Feed, article: Article): Promise<StreamedAudio> {
-    let text = await resolveArticleText(feed, article)
+    let text = await resolveArticleText(feed, article, { forceRegenerateImageDescriptions: false })
     if (!text.trim())
         throw new Error('Article text is empty')
 
@@ -335,24 +355,24 @@ function markArticleFailed(feedId: number, episodeKey: string, reason: string) {
         .run()
 }
 
-async function resolveArticleText(feed: Feed, article: Article) {
+async function resolveArticleText(feed: Feed, article: Article, options: { forceRegenerateImageDescriptions: boolean }) {
     if (feed.contentSource == 'source_page')
-        return await readSourcePage(article.sourceUrl, article)
+        return await readSourcePage(article.sourceUrl, article, options)
 
-    let preparedContent = await prepareNarrationText(article.content || '', article.sourceUrl)
-        || await prepareNarrationText((article.summary || ''), article.sourceUrl)
+    let preparedContent = await prepareNarrationText(article.content || '', article.sourceUrl, options)
+        || await prepareNarrationText((article.summary || ''), article.sourceUrl, options)
 
     return [article.title, preparedContent].join('\n\n').trim()
 }
 
-async function readSourcePage(sourceUrl: string, article: Article) {
+async function readSourcePage(sourceUrl: string, article: Article, options: { forceRegenerateImageDescriptions: boolean }) {
     try {
         let response = await fetch(sourceUrl)
         if (!response.ok)
             return fallbackArticleText(article)
 
         let html = await response.text()
-        let extracted = await extractReadableText(html, sourceUrl)
+        let extracted = await extractReadableText(html, sourceUrl, options)
         if (!extracted)
             return fallbackArticleText(article)
 
@@ -367,7 +387,7 @@ function fallbackArticleText(article: Article) {
     return [article.title, article.content || article.summary || ''].join('\n\n').trim()
 }
 
-async function extractReadableText(html: string, sourceUrl: string) {
+async function extractReadableText(html: string, sourceUrl: string, options: { forceRegenerateImageDescriptions: boolean }) {
     let withoutScripts = html
         .replace(/<script[\s\S]*?<\/script>/gi, ' ')
         .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -376,7 +396,9 @@ async function extractReadableText(html: string, sourceUrl: string) {
     let articleMatch = withoutScripts.match(/<article[\s\S]*?<\/article>/i)
     let mainMatch = withoutScripts.match(/<main[\s\S]*?<\/main>/i)
     let candidate = articleMatch?.[0] || mainMatch?.[0] || withoutScripts
-    let withImageDescriptions = await replaceImagesWithDescriptions(candidate, sourceUrl)
+    let withImageDescriptions = await replaceImagesWithDescriptionsWithOptions(candidate, sourceUrl, {
+        forceRegenerate: options.forceRegenerateImageDescriptions
+    })
 
     let text = withImageDescriptions
         .replace(/<\/?(p|h1|h2|h3|h4|h5|h6|li|blockquote|section|article|main|br)[^>]*>/gi, '\n')
@@ -397,8 +419,10 @@ async function extractReadableText(html: string, sourceUrl: string) {
     return text
 }
 
-async function prepareNarrationText(value: string, sourceUrl: string) {
-    let withImageDescriptions = await replaceImagesWithDescriptions(value, sourceUrl)
+async function prepareNarrationText(value: string, sourceUrl: string, options: { forceRegenerateImageDescriptions: boolean }) {
+    let withImageDescriptions = await replaceImagesWithDescriptionsWithOptions(value, sourceUrl, {
+        forceRegenerate: options.forceRegenerateImageDescriptions
+    })
 
     return withImageDescriptions
         .replace(/<script[\s\S]*?<\/script>/gi, ' ')

@@ -42,3 +42,9 @@ export const EpisodeVoiceInput = object({
     voice: pipe(string(), trim())
 })
 
+export type EpisodeTranscriptInput = InferOutput<typeof EpisodeTranscriptInput>
+export const EpisodeTranscriptInput = object({
+    ...FeedIdInput.entries,
+    episodeKey: pipe(string('Episode key is required'), trim(), minLength(1, 'Episode key is required'))
+})
+

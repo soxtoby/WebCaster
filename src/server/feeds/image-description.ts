@@ -12,6 +12,14 @@ let descriptionCache = new Map<string, string>()
 let imageDescriptionTimeoutMs = 15000
 
 export async function replaceImagesWithDescriptions(html: string, sourceUrl: string | null) {
+    return await replaceImagesWithDescriptionsWithOptions(html, sourceUrl, { forceRegenerate: false })
+}
+
+export async function replaceImagesWithDescriptionsWithOptions(
+    html: string,
+    sourceUrl: string | null,
+    options: { forceRegenerate: boolean }
+) {
     let imageSettings = listImageDescriptionSettings()
     let matches = html.match(/<img\b[^>]*>/gi)
     if (!matches || matches.length == 0)
@@ -21,14 +29,19 @@ export async function replaceImagesWithDescriptions(html: string, sourceUrl: str
 
     for (let tag of matches) {
         let image = parseImageTag(tag)
-        let replacement = await describeImage(image, sourceUrl, imageSettings)
+        let replacement = await describeImage(image, sourceUrl, imageSettings, options)
         processed = processed.replace(tag, ` ${replacement} `)
     }
 
     return processed
 }
 
-async function describeImage(image: ImageTag, sourceUrl: string | null, settings: ImageDescriptionSettings) {
+async function describeImage(
+    image: ImageTag,
+    sourceUrl: string | null,
+    settings: ImageDescriptionSettings,
+    options: { forceRegenerate: boolean }
+) {
     let fallback = buildFallbackDescription(image.alt, image.title)
     if (!settings.enabled)
         return fallback
@@ -38,9 +51,11 @@ async function describeImage(image: ImageTag, sourceUrl: string | null, settings
         return fallback
 
     let cacheKey = `${settings.provider}|${settings.model}|${resolvedUrl}`
-    let cached = descriptionCache.get(cacheKey)
-    if (cached)
-        return cached
+    if (!options.forceRegenerate) {
+        let cached = descriptionCache.get(cacheKey)
+        if (cached)
+            return cached
+    }
 
     let described = await describeWithProvider(settings, resolvedUrl, image.alt, image.title)
     if (!described)

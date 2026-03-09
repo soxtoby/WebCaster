@@ -1,8 +1,8 @@
 import { TRPCError } from "@trpc/server"
 import { procedure } from "../trpc/trpc"
 import { fetchFeed, type ParsedFeedArticle } from "./feed-parsing"
-import { insertFeedArticles, listFeedEpisodes, setEpisodeVoiceOverride } from "./feed-podcast"
-import { EpisodeVoiceInput, FeedIdInput, FeedInput, FeedUpdateInput } from "./feed-types"
+import { getEpisodeTranscript, insertFeedArticles, listFeedEpisodes, setEpisodeVoiceOverride } from "./feed-podcast"
+import { EpisodeTranscriptInput, EpisodeVoiceInput, FeedIdInput, FeedInput, FeedUpdateInput } from "./feed-types"
 import { createFeed as createFeedRecord, deleteFeedById as deleteFeedRecordById, getFeedById as getFeedRecordById, listFeeds as listFeedRecords, updateFeedById as updateFeedRecordById } from "./feed-repository"
 
 type EnrichedFeedInput = FeedInput & { description?: string | null; imageUrl?: string | null }
@@ -87,6 +87,46 @@ export const setEpisodeVoice = procedure
         }
 
         return { success: true }
+    })
+
+export const episodeTranscript = procedure
+    .input(EpisodeTranscriptInput)
+    .query(async ({ input }) => {
+        let result = await getEpisodeTranscript(input.id, input.episodeKey)
+
+        if (!result.ok) {
+            if (result.reason == 'feed_not_found')
+                throw new TRPCError({ code: 'NOT_FOUND', message: 'Feed not found' })
+
+            if (result.reason == 'episode_not_found')
+                throw new TRPCError({ code: 'NOT_FOUND', message: 'Episode not found' })
+        }
+
+        return {
+            transcript: result.transcript,
+            title: result.title,
+            sourceUrl: result.sourceUrl
+        }
+    })
+
+export const regenerateEpisodeTranscript = procedure
+    .input(EpisodeTranscriptInput)
+    .mutation(async ({ input }) => {
+        let result = await getEpisodeTranscript(input.id, input.episodeKey, true)
+
+        if (!result.ok) {
+            if (result.reason == 'feed_not_found')
+                throw new TRPCError({ code: 'NOT_FOUND', message: 'Feed not found' })
+
+            if (result.reason == 'episode_not_found')
+                throw new TRPCError({ code: 'NOT_FOUND', message: 'Episode not found' })
+        }
+
+        return {
+            transcript: result.transcript,
+            title: result.title,
+            sourceUrl: result.sourceUrl
+        }
     })
 
 type EnrichResult = { enriched: EnrichedFeedInput; articles: ParsedFeedArticle[] }

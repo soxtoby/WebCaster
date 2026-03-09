@@ -184,6 +184,7 @@ export function FeedManagerPage() {
                     activeEpisodeKey={activeEpisodeKey}
                     draft={draft}
                     error={error}
+                    feedId={selectedFeed?.id ?? null}
                     isEditing={selectedFeed != null}
                     podcastUrl={podcastUrl}
                     episodes={episodes}
@@ -303,6 +304,7 @@ export function FeedManagerPage() {
             setUpdatingEpisodeVoiceKey(null)
         }
     }
+
     async function loadEpisodes(feedId: number) {
         try {
             let response = await api.feeds.episodes.query({ id: feedId })
