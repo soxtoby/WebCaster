@@ -1,9 +1,9 @@
 import { TRPCError } from "@trpc/server"
 import { procedure } from "../trpc/trpc"
 import { fetchFeed, type ParsedFeedArticle } from "./feed-parsing"
-import { getEpisodeTranscript, insertFeedArticles, listFeedEpisodes, setEpisodeVoiceOverride } from "./feed-podcast"
-import { EpisodeTranscriptInput, EpisodeVoiceInput, FeedIdInput, FeedInput, FeedUpdateInput } from "./feed-types"
+import { getEpisodeTranscript, insertFeedArticles, listFeedEpisodes, regenerateEpisodeTranscript as rebuildEpisodeTranscript, setEpisodeVoiceOverride } from "./feed-podcast"
 import { createFeed as createFeedRecord, deleteFeedById as deleteFeedRecordById, getFeedById as getFeedRecordById, listFeeds as listFeedRecords, updateFeedById as updateFeedRecordById } from "./feed-repository"
+import { EpisodeTranscriptInput, EpisodeVoiceInput, FeedIdInput, FeedInput, FeedUpdateInput } from "./feed-types"
 
 type EnrichedFeedInput = FeedInput & { description?: string | null; imageUrl?: string | null }
 
@@ -112,7 +112,7 @@ export const episodeTranscript = procedure
 export const regenerateEpisodeTranscript = procedure
     .input(EpisodeTranscriptInput)
     .mutation(async ({ input }) => {
-        let result = await getEpisodeTranscript(input.id, input.episodeKey, true)
+        let result = await rebuildEpisodeTranscript(input.id, input.episodeKey)
 
         if (!result.ok) {
             if (result.reason == 'feed_not_found')

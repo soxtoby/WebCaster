@@ -178,13 +178,42 @@ export async function getEpisodeTranscript(feedId: number, episodeKey: string, f
     if (!article)
         return { ok: false as const, reason: 'episode_not_found' as const }
 
-    let transcript = await resolveArticleText(feed, article, { forceRegenerateImageDescriptions })
+    let transcript = await getStoredEpisodeTranscript(feed, article, {
+        forceRegenerateTranscript: forceRegenerateImageDescriptions,
+        refreshFeedArticle: false
+    })
 
     return {
         ok: true as const,
         transcript,
         title: article.title,
         sourceUrl: article.sourceUrl
+    }
+}
+
+export async function regenerateEpisodeTranscript(feedId: number, episodeKey: string) {
+    let feed = database.select().from(feedsTable).where(eq(feedsTable.id, feedId)).get()
+    if (!feed)
+        return { ok: false as const, reason: 'feed_not_found' as const }
+
+    let article = findArticleByEpisodeKey(feed.id, episodeKey)
+    if (!article)
+        return { ok: false as const, reason: 'episode_not_found' as const }
+
+    let refreshedArticle = feed.contentSource == 'feed_article'
+        ? await refreshStoredArticleFromFeed(feed, article)
+        : article
+
+    let transcript = await getStoredEpisodeTranscript(feed, refreshedArticle, {
+        forceRegenerateTranscript: true,
+        refreshFeedArticle: false
+    })
+
+    return {
+        ok: true as const,
+        transcript,
+        title: refreshedArticle.title,
+        sourceUrl: refreshedArticle.sourceUrl
     }
 }
 
@@ -265,7 +294,10 @@ async function generateAndStoreAudio(feed: Feed, article: Article) {
 }
 
 async function createAudioStream(feed: Feed, article: Article): Promise<StreamedAudio> {
-    let text = await resolveArticleText(feed, article, { forceRegenerateImageDescriptions: false })
+    let text = await getStoredEpisodeTranscript(feed, article, {
+        forceRegenerateTranscript: false,
+        refreshFeedArticle: false
+    })
     if (!text.trim())
         throw new Error('Article text is empty')
 
@@ -283,6 +315,41 @@ async function createAudioStream(feed: Feed, article: Article): Promise<Streamed
 
 function isTtsProvider(value: string): value is TtsProvider {
     return value == 'inworld' || value == 'openai' || value == 'elevenlabs' || value == 'lemonfox'
+}
+
+async function getStoredEpisodeTranscript(
+    feed: Feed,
+    article: Article,
+    options: {
+        forceRegenerateTranscript: boolean
+        refreshFeedArticle: boolean
+    }
+) {
+    let resolvedArticle = article
+
+    if (options.refreshFeedArticle && feed.contentSource == 'feed_article')
+        resolvedArticle = await refreshStoredArticleFromFeed(feed, article)
+
+    if (!options.forceRegenerateTranscript && resolvedArticle.transcript != null)
+        return resolvedArticle.transcript
+
+    let transcript = await resolveArticleText(feed, resolvedArticle, {
+        forceRegenerateImageDescriptions: options.forceRegenerateTranscript
+    })
+
+    storeEpisodeTranscript(resolvedArticle, transcript)
+    return transcript
+}
+
+function storeEpisodeTranscript(article: Article, transcript: string) {
+    database
+        .update(articlesTable)
+        .set({
+            transcript,
+            updatedAt: sql`CURRENT_TIMESTAMP`
+        })
+        .where(and(eq(articlesTable.feedId, article.feedId), eq(articlesTable.episodeKey, article.episodeKey)))
+        .run()
 }
 
 async function persistAudioStream(stream: ReadableStream<Uint8Array>, outputPath: string, article: Article, feed: Feed) {
@@ -362,7 +429,7 @@ async function resolveArticleText(feed: Feed, article: Article, options: { force
     let preparedContent = await prepareNarrationText(article.content || '', article.sourceUrl, options)
         || await prepareNarrationText((article.summary || ''), article.sourceUrl, options)
 
-    return [article.title, preparedContent].join('\n\n').trim()
+    return [decodeTranscriptText(article.title), preparedContent].join('\n\n').trim()
 }
 
 async function readSourcePage(sourceUrl: string, article: Article, options: { forceRegenerateImageDescriptions: boolean }) {
@@ -376,7 +443,7 @@ async function readSourcePage(sourceUrl: string, article: Article, options: { fo
         if (!extracted)
             return fallbackArticleText(article)
 
-        return [article.title, extracted].join('\n\n').trim()
+        return [decodeTranscriptText(article.title), extracted].join('\n\n').trim()
     }
     catch {
         return fallbackArticleText(article)
@@ -384,7 +451,7 @@ async function readSourcePage(sourceUrl: string, article: Article, options: { fo
 }
 
 function fallbackArticleText(article: Article) {
-    return [article.title, article.content || article.summary || ''].join('\n\n').trim()
+    return decodeTranscriptText([article.title, article.content || article.summary || ''].join('\n\n').trim())
 }
 
 async function extractReadableText(html: string, sourceUrl: string, options: { forceRegenerateImageDescriptions: boolean }) {
@@ -401,17 +468,11 @@ async function extractReadableText(html: string, sourceUrl: string, options: { f
     })
 
     let text = withImageDescriptions
-        .replace(/<\/?(p|h1|h2|h3|h4|h5|h6|li|blockquote|section|article|main|br)[^>]*>/gi, '\n')
+        .replace(/<\/?(p|h1|h2|h3|h4|h5|h6|li|blockquote|section|article|main|div|br)[^>]*>/gi, '\n')
         .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&#39;|&apos;/g, "'")
-        .replace(/&quot;/g, '"')
-        .replace(/\s+\n/g, '\n')
-        .replace(/\n{3,}/g, '\n\n')
         .trim()
+
+    text = normalizeTranscriptText(decodeTranscriptText(text))
 
     if (text.length < 120)
         return ''
@@ -424,22 +485,103 @@ async function prepareNarrationText(value: string, sourceUrl: string, options: {
         forceRegenerate: options.forceRegenerateImageDescriptions
     })
 
-    return withImageDescriptions
+    let text = withImageDescriptions
         .replace(/<script[\s\S]*?<\/script>/gi, ' ')
         .replace(/<style[\s\S]*?<\/style>/gi, ' ')
         .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
-        .replace(/<\/?(p|h1|h2|h3|h4|h5|h6|li|blockquote|section|article|main|br)[^>]*>/gi, '\n')
+        .replace(/<\/?(p|h1|h2|h3|h4|h5|h6|li|blockquote|section|article|main|div|br)[^>]*>/gi, '\n')
         .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&#39;|&apos;/g, "'")
-        .replace(/&quot;/g, '"')
-        .replace(/\s+\n/g, '\n')
-        .replace(/\n{3,}/g, '\n\n')
-        .replace(/\s+/g, ' ')
         .trim()
+
+    return normalizeTranscriptText(decodeTranscriptText(text))
+}
+
+function normalizeTranscriptText(value: string) {
+    return value
+        .replace(/\r\n?/g, '\n')
+        .replace(/[ \t\f\v]+\n/g, '\n')
+        .replace(/\n[ \t\f\v]+/g, '\n')
+        .replace(/[ \t\f\v]+/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim()
+}
+
+function decodeTranscriptText(value: string) {
+    let decoded = value
+
+    for (let pass = 0; pass < 3; pass++) {
+        let next = decoded
+            .replace(/&nbsp;/gi, ' ')
+            .replace(/&quot;/gi, '"')
+            .replace(/&apos;/gi, "'")
+            .replace(/&amp;/gi, '&')
+            .replace(/&lt;/gi, '<')
+            .replace(/&gt;/gi, '>')
+            .replace(/&#(\d+);/g, (_, codePointText) => decodeCodePoint(codePointText, 10))
+            .replace(/&#x([\da-f]+);/gi, (_, codePointText) => decodeCodePoint(codePointText, 16))
+
+        if (next == decoded)
+            break
+
+        decoded = next
+    }
+
+    return decoded
+}
+
+function decodeCodePoint(codePointText: string, radix: number) {
+    let codePoint = parseInt(codePointText, radix)
+    if (!Number.isFinite(codePoint) || codePoint <= 0)
+        return ''
+
+    try {
+        return String.fromCodePoint(codePoint)
+    }
+    catch {
+        return ''
+    }
+}
+
+async function refreshStoredArticleFromFeed(feed: Feed, article: Article) {
+    let parsed = await fetchFeed(feed.rssUrl)
+    let refreshed = parsed?.articles.find(item => articleMatchesParsedArticle(article, item))
+    if (!refreshed)
+        return article
+
+    let nextArticle: Article = {
+        ...article,
+        title: refreshed.title,
+        summary: refreshed.summary,
+        content: refreshed.content,
+        guid: refreshed.guid,
+        publishedAt: refreshed.publishedAt,
+        updatedAt: new Date().toISOString()
+    }
+
+    database
+        .update(articlesTable)
+        .set({
+            title: refreshed.title,
+            summary: refreshed.summary,
+            content: refreshed.content,
+            guid: refreshed.guid,
+            publishedAt: refreshed.publishedAt,
+            updatedAt: sql`CURRENT_TIMESTAMP`
+        })
+        .where(and(eq(articlesTable.feedId, article.feedId), eq(articlesTable.sourceUrl, article.sourceUrl)))
+        .run()
+
+    return nextArticle
+}
+
+function articleMatchesParsedArticle(article: Article, parsedArticle: ParsedFeedArticle) {
+    if (parsedArticle.sourceUrl == article.sourceUrl)
+        return true
+
+    if (article.guid && parsedArticle.guid)
+        return parsedArticle.guid == article.guid
+
+    return false
 }
 
 function ensureStoredEpisodeKey(article: Article, episodeKey: string) {

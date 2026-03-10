@@ -113,8 +113,10 @@ async function describeWithOpenAi(settings: ImageDescriptionSettings, imageUrl: 
             })
         })
 
-        if (!response.ok)
+        if (!response.ok) {
+            console.error('Image description request failed: ' + response.status + ' ' + response.statusText + '\n' + await response.text())
             return null
+        }
 
         let json = await response.json() as any
         let output = json?.choices?.[0]?.message?.content

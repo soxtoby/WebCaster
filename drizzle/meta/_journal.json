@@ -99,6 +99,13 @@
       "when": 1772800000000,
       "tag": "0013_episode_voice_override",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1773100800000,
+      "tag": "0014_episode_transcript_cache",
+      "breakpoints": true
     }
   ]
 }

@@ -55,6 +55,7 @@ export const articlesTable = sqliteTable('articles', {
     title: text('title').notNull(),
     summary: text('summary'),
     content: text('content'),
+    transcript: text('transcript'),
     voice: text('voice').references(() => ttsVoicesTable.id),
     audioUrl: text('audio_url'),
     status: text('status').notNull().default('pending'),
