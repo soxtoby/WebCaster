@@ -1,5 +1,7 @@
+import type { inferRouterOutputs } from "@trpc/server"
 import { type ChangeEvent, useEffect, useRef, useState } from "react"
 import { classes, style } from "stylemap"
+import type { AppRouter } from "../../server/trpc/app-router"
 import { api } from "../api"
 
 export type ProviderSettingsDraft = {
@@ -41,6 +43,15 @@ export type ImageDescriptionSettingsDraft = {
 
 type ActiveTab = 'server' | 'imageDescription' | keyof TtsSettingsDraft
 
+type SavedSettingsSnapshot = {
+    draft: TtsSettingsDraft
+    serverDraft: ServerSettingsDraft
+    imageDescriptionDraft: ImageDescriptionSettingsDraft
+}
+
+type RouterOutputs = inferRouterOutputs<AppRouter>
+type SettingsResponse = RouterOutputs['settings']['get']
+
 let defaultImageDescriptionPrompt =
     `Describe this image briefly and factually for a listener who cannot see it.
     Focus on visible details only. 
@@ -69,6 +80,7 @@ export function SettingsDialog(props: {
     onSaved: (result: { redirectUrl?: string }) => void
 }) {
     let dialogRef = useRef<HTMLDialogElement>(null)
+    let savedSnapshotRef = useRef<SavedSettingsSnapshot>(createDefaultSavedSettingsSnapshot())
     let [activeTab, setActiveTab] = useState<ActiveTab>('server')
     let [error, setError] = useState('')
     let [status, setStatus] = useState('')
@@ -93,6 +105,7 @@ export function SettingsDialog(props: {
         id={props.id}
         ref={dialogRef}
         className={classes(dialogContainerStyle)}
+        onClose={resetToSavedSettings}
     >
         <div className={classes(headerStyle)}>
             <h2 className={classes(headingStyle)}>Settings</h2>
@@ -238,25 +251,13 @@ export function SettingsDialog(props: {
                 }
             })
 
+            let savedSnapshot = createSavedSettingsSnapshotFromResponse(response)
+            savedSnapshotRef.current = savedSnapshot
+
             if (enteredPassword)
                 await api.auth.login.mutate({ password: enteredPassword })
 
-            setDraft(response.settings)
-            setImageDescriptionDraft({
-                enabled: response.imageDescription.enabled,
-                provider: response.imageDescription.provider,
-                providers: {
-                    openai: { ...response.imageDescription.providers.openai },
-                    gemini: { ...response.imageDescription.providers.gemini }
-                }
-            })
-            setServerDraft({
-                hostname: response.server.hostname,
-                port: String(response.server.port ?? 80),
-                listenOnAllInterfaces: response.server.listenOnAllInterfaces,
-                password: '',
-                passwordConfigured: response.server.passwordConfigured
-            })
+            applySavedSettingsSnapshot(savedSnapshot)
             setStatus('Settings saved')
             dialogRef.current?.close()
             props.onSaved({ redirectUrl: response.redirectUrl ?? undefined })
@@ -270,22 +271,9 @@ export function SettingsDialog(props: {
     async function loadSettings() {
         try {
             let response = await api.settings.get.query()
-            setDraft(response.settings)
-            setImageDescriptionDraft({
-                enabled: response.imageDescription.enabled,
-                provider: response.imageDescription.provider,
-                providers: {
-                    openai: { ...response.imageDescription.providers.openai },
-                    gemini: { ...response.imageDescription.providers.gemini }
-                }
-            })
-            setServerDraft({
-                hostname: response.server.hostname,
-                port: String(response.server.port ?? 80),
-                listenOnAllInterfaces: response.server.listenOnAllInterfaces,
-                password: '',
-                passwordConfigured: response.server.passwordConfigured
-            })
+            let savedSnapshot = createSavedSettingsSnapshotFromResponse(response)
+            savedSnapshotRef.current = savedSnapshot
+            applySavedSettingsSnapshot(savedSnapshot)
         } catch {
         }
     }
@@ -338,6 +326,20 @@ export function SettingsDialog(props: {
                 }
             }
         }))
+    }
+
+    function resetToSavedSettings() {
+        applySavedSettingsSnapshot(savedSnapshotRef.current)
+        setActiveTab('server')
+        setError('')
+        setStatus('')
+    }
+
+    function applySavedSettingsSnapshot(snapshot: SavedSettingsSnapshot) {
+        let nextSnapshot = structuredClone(snapshot)
+        setDraft(nextSnapshot.draft)
+        setServerDraft(nextSnapshot.serverDraft)
+        setImageDescriptionDraft(nextSnapshot.imageDescriptionDraft)
     }
 }
 
@@ -395,6 +397,35 @@ function createDefaultImageDescriptionDraft(): ImageDescriptionSettingsDraft {
             }
         }
     }
+}
+
+function createDefaultSavedSettingsSnapshot(): SavedSettingsSnapshot {
+    return {
+        draft: createDefaultSettingsDraft(),
+        serverDraft: createDefaultServerDraft(),
+        imageDescriptionDraft: createDefaultImageDescriptionDraft()
+    }
+}
+
+function createSavedSettingsSnapshotFromResponse(response: SettingsResponse): SavedSettingsSnapshot {
+    return structuredClone({
+        draft: response.settings,
+        imageDescriptionDraft: {
+            enabled: response.imageDescription.enabled,
+            provider: response.imageDescription.provider,
+            providers: {
+                openai: response.imageDescription.providers.openai,
+                gemini: response.imageDescription.providers.gemini
+            }
+        },
+        serverDraft: {
+            hostname: response.server.hostname,
+            port: String(response.server.port ?? 80),
+            listenOnAllInterfaces: response.server.listenOnAllInterfaces,
+            password: '',
+            passwordConfigured: response.server.passwordConfigured
+        }
+    })
 }
 
 function ProviderPanel(props: {
