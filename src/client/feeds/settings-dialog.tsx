@@ -650,6 +650,7 @@ function ServerPanel(props: {
 let dialogContainerStyle = style('settingsDialog', {
     width: '100%',
     maxWidth: 600,
+    maxHeight: 'min(720px, calc(100vh - 32px))',
     backgroundColor: 'var(--panel)',
     border: '1px solid var(--border)',
     borderRadius: 10,
@@ -713,7 +714,9 @@ let closeIconStyle = style('closeIcon', {
 
 let layoutStyle = style('settingsLayout', {
     display: 'flex',
-    minHeight: 280,
+    minWidth: 0,
+    minHeight: 0,
+    flex: 1,
     $: {
         '@media (max-width: 500px)': {
             flexDirection: 'column'
@@ -727,6 +730,8 @@ let sidebarStyle = style('settingsSidebar', {
     backgroundColor: 'var(--panel)',
     padding: '12px 8px',
     flexShrink: 0,
+    minHeight: 0,
+    overflowY: 'auto',
     $: {
         '@media (max-width: 500px)': {
             width: '100%',
@@ -734,7 +739,8 @@ let sidebarStyle = style('settingsSidebar', {
             borderBottom: '1px solid var(--border)',
             padding: '8px',
             display: 'flex',
-            overflowX: 'auto'
+            overflowX: 'auto',
+            overflowY: 'visible'
         }
     }
 })
@@ -814,7 +820,9 @@ let contentStyle = style('settingsContent', {
     flex: 1,
     padding: 24,
     backgroundColor: 'var(--panel)',
-    minWidth: 0
+    minWidth: 0,
+    minHeight: 0,
+    overflowY: 'auto'
 })
 
 let panelContainerStyle = style('panelContainer', {
