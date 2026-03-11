@@ -41,20 +41,26 @@ export type ImageDescriptionSettingsDraft = {
 
 type ActiveTab = 'server' | 'imageDescription' | keyof TtsSettingsDraft
 
+let defaultImageDescriptionPrompt =
+    `Describe this image briefly and factually for a listener who cannot see it.
+    Focus on visible details only. 
+    Begin with a natural transition phrase to indicate there's an image in the article, e.g. "There's an image here" or "The article has an image".
+    End with a natural transition phrase to indicate the podcast is returning to the article, e.g. "Returning to the article..." or "Back to the article...".`
+
 let imageDescriptionProviderDefaults = {
     openai: {
         label: 'OpenAI',
         apiKey: '',
         baseUrl: 'https://api.openai.com/v1',
         model: 'gpt-5-mini',
-        prompt: 'Describe this image briefly and factually for podcast narration. Focus on visible details only.'
+        prompt: defaultImageDescriptionPrompt
     },
     gemini: {
         label: 'Google Gemini',
         apiKey: '',
         baseUrl: 'https://generativelanguage.googleapis.com',
         model: 'gemini-3.1-flash-lite-preview',
-        prompt: 'Describe this image briefly and factually for podcast narration. Focus on visible details only.'
+        prompt: defaultImageDescriptionPrompt
     }
 } as const
 
