@@ -95,10 +95,11 @@ export async function buildPodcastFeedXml(feed: Feed) {
 
     let safeTitle = escapeXml(feed.name)
     let safeDescription = escapeXml(feed.description || '')
+    let selfLink = buildFeedUrl(feed)
     let channelImage = feed.imageUrl ? `<image><url>${escapeXml(feed.imageUrl)}</url><title>${safeTitle}</title><link>${escapeXml(feed.rssUrl)}</link></image>` : ''
-    let items = episodes.map(episode => buildRssItem(feed, episode)).join('')
+    let items = (await Promise.all(episodes.map(episode => buildRssItem(feed, episode)))).join('')
 
-    return `<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0">\n<channel>\n<title>${safeTitle}</title>\n<link>${escapeXml(feed.rssUrl)}</link>\n<description>${safeDescription}</description>\n${channelImage}\n${items}\n</channel>\n</rss>`
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">\n<channel>\n<title>${safeTitle}</title>\n<link>${escapeXml(feed.rssUrl)}</link>\n<description>${safeDescription}</description>\n<atom:link href="${escapeXml(selfLink)}" rel="self" type="application/rss+xml"/>\n${channelImage}\n${items}\n</channel>\n</rss>`
 }
 
 export async function streamEpisodeAudio(feed: Feed, episodeKey: string): Promise<Response> {
@@ -604,14 +605,21 @@ function ensureStoredEpisodeKey(article: Article, episodeKey: string) {
     return article
 }
 
-function buildRssItem(feed: Feed, article: Article) {
+async function buildRssItem(feed: Feed, article: Article) {
     let enclosureUrl = buildAudioUrl(feed, article)
+    let enclosureLength = await getEnclosureLength(feed, article)
     let guid = article.sourceUrl || article.guid || enclosureUrl
     let published = article.publishedAt ? `<pubDate>${new Date(article.publishedAt).toUTCString()}</pubDate>` : ''
     let description = escapeXml(article.summary || '')
     let title = escapeXml(article.title)
 
-    return `<item><title>${title}</title><guid isPermaLink="false">${escapeXml(guid)}</guid><link>${escapeXml(article.sourceUrl)}</link><description>${description}</description><enclosure url="${escapeXml(enclosureUrl)}" type="audio/mpeg"/>${published}</item>`
+    return `<item><title>${title}</title><guid isPermaLink="false">${escapeXml(guid)}</guid><link>${escapeXml(article.sourceUrl)}</link><description>${description}</description><enclosure url="${escapeXml(enclosureUrl)}" length="${enclosureLength}" type="audio/mpeg"/>${published}</item>`
+}
+
+async function getEnclosureLength(feed: Feed, article: Pick<Article, 'episodeKey' | 'title' | 'sourceUrl'>) {
+    let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
+    let file = Bun.file(resolvedPath)
+    return await file.exists() ? file.size : 0
 }
 
 function escapeXml(value: string) {
@@ -625,7 +633,11 @@ function escapeXml(value: string) {
 
 function buildAudioUrl(feed: Feed, article: Pick<Article, 'episodeKey' | 'title' | 'sourceUrl'>) {
     let episodeKey = resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl)
-    return `${getServerBaseUrl()}/feed/${feed.podcastSlug}/${episodeKey}`
+    return `${getServerBaseUrl()}/feed/${feed.podcastSlug}/${episodeKey}.mp3`
+}
+
+function buildFeedUrl(feed: Pick<Feed, 'podcastSlug'>) {
+    return `${getServerBaseUrl()}/feed/${feed.podcastSlug}.xml`
 }
 
 function findArticleByEpisodeKey(feedId: number, episodeKey: string) {
