@@ -23,16 +23,40 @@ export type ServerSettingsDraft = {
     passwordConfigured: boolean
 }
 
-export type ImageDescriptionSettingsDraft = {
-    enabled: boolean
-    provider: 'openai'
+export type ImageDescriptionProviderDraft = {
     apiKey: string
     baseUrl: string
     model: string
     prompt: string
 }
 
+export type ImageDescriptionSettingsDraft = {
+    enabled: boolean
+    provider: 'openai' | 'gemini'
+    providers: {
+        openai: ImageDescriptionProviderDraft
+        gemini: ImageDescriptionProviderDraft
+    }
+}
+
 type ActiveTab = 'server' | 'imageDescription' | keyof TtsSettingsDraft
+
+let imageDescriptionProviderDefaults = {
+    openai: {
+        label: 'OpenAI',
+        apiKey: '',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-5-mini',
+        prompt: 'Describe this image briefly and factually for podcast narration. Focus on visible details only.'
+    },
+    gemini: {
+        label: 'Google Gemini',
+        apiKey: '',
+        baseUrl: 'https://generativelanguage.googleapis.com',
+        model: 'gemini-3.1-flash-lite-preview',
+        prompt: 'Describe this image briefly and factually for podcast narration. Focus on visible details only.'
+    }
+} as const
 
 export function SettingsDialog(props: {
     id: string
@@ -126,6 +150,7 @@ export function SettingsDialog(props: {
                         ? <ImageDescriptionPanel
                             value={imageDescriptionDraft}
                             onChange={onImageDescriptionDraftChange}
+                            onProviderChange={onImageDescriptionProviderDraftChange}
                         />
                         : <ProviderPanel
                             title={ttsTabs.find(t => t.id === activeTab)?.label || ''}
@@ -194,10 +219,10 @@ export function SettingsDialog(props: {
                 imageDescription: {
                     enabled: imageDescriptionDraft.enabled,
                     provider: imageDescriptionDraft.provider,
-                    apiKey: imageDescriptionDraft.apiKey.trim(),
-                    baseUrl: imageDescriptionDraft.baseUrl.trim(),
-                    model: imageDescriptionDraft.model.trim(),
-                    prompt: imageDescriptionDraft.prompt.trim()
+                    providers: {
+                        openai: sanitizeImageDescriptionProviderDraft(imageDescriptionDraft.providers.openai),
+                        gemini: sanitizeImageDescriptionProviderDraft(imageDescriptionDraft.providers.gemini)
+                    }
                 },
                 server: {
                     hostname: serverDraft.hostname.trim(),
@@ -214,10 +239,10 @@ export function SettingsDialog(props: {
             setImageDescriptionDraft({
                 enabled: response.imageDescription.enabled,
                 provider: response.imageDescription.provider,
-                apiKey: response.imageDescription.apiKey,
-                baseUrl: response.imageDescription.baseUrl,
-                model: response.imageDescription.model,
-                prompt: response.imageDescription.prompt
+                providers: {
+                    openai: { ...response.imageDescription.providers.openai },
+                    gemini: { ...response.imageDescription.providers.gemini }
+                }
             })
             setServerDraft({
                 hostname: response.server.hostname,
@@ -243,10 +268,10 @@ export function SettingsDialog(props: {
             setImageDescriptionDraft({
                 enabled: response.imageDescription.enabled,
                 provider: response.imageDescription.provider,
-                apiKey: response.imageDescription.apiKey,
-                baseUrl: response.imageDescription.baseUrl,
-                model: response.imageDescription.model,
-                prompt: response.imageDescription.prompt
+                providers: {
+                    openai: { ...response.imageDescription.providers.openai },
+                    gemini: { ...response.imageDescription.providers.gemini }
+                }
             })
             setServerDraft({
                 hostname: response.server.hostname,
@@ -291,6 +316,23 @@ export function SettingsDialog(props: {
     function onImageDescriptionDraftChange(field: keyof ImageDescriptionSettingsDraft, value: string | boolean) {
         setImageDescriptionDraft(current => ({ ...current, [field]: value }))
     }
+
+    function onImageDescriptionProviderDraftChange(
+        provider: keyof ImageDescriptionSettingsDraft['providers'],
+        field: keyof ImageDescriptionProviderDraft,
+        value: string
+    ) {
+        setImageDescriptionDraft(current => ({
+            ...current,
+            providers: {
+                ...current.providers,
+                [provider]: {
+                    ...current.providers[provider],
+                    [field]: value
+                }
+            }
+        }))
+    }
 }
 
 function createDefaultSettingsDraft(): TtsSettingsDraft {
@@ -332,10 +374,20 @@ function createDefaultImageDescriptionDraft(): ImageDescriptionSettingsDraft {
     return {
         enabled: false,
         provider: 'openai',
-        apiKey: '',
-        baseUrl: 'https://api.openai.com/v1',
-        model: 'gpt-4.1-mini',
-        prompt: 'Describe this image briefly and factually for podcast narration. Focus on visible details only.'
+        providers: {
+            openai: {
+                apiKey: imageDescriptionProviderDefaults.openai.apiKey,
+                baseUrl: imageDescriptionProviderDefaults.openai.baseUrl,
+                model: imageDescriptionProviderDefaults.openai.model,
+                prompt: imageDescriptionProviderDefaults.openai.prompt
+            },
+            gemini: {
+                apiKey: imageDescriptionProviderDefaults.gemini.apiKey,
+                baseUrl: imageDescriptionProviderDefaults.gemini.baseUrl,
+                model: imageDescriptionProviderDefaults.gemini.model,
+                prompt: imageDescriptionProviderDefaults.gemini.prompt
+            }
+        }
     }
 }
 
@@ -406,17 +458,20 @@ function validateSettings(settings: TtsSettingsDraft, imageDescription: ImageDes
             return `${provider.name} base URL is required`
     }
 
-    if (!imageDescription.baseUrl.trim())
+    let activeProvider = imageDescription.providers[imageDescription.provider]
+    let activeProviderLabel = imageDescriptionProviderDefaults[imageDescription.provider].label
+
+    if (!activeProvider.baseUrl.trim())
         return 'Image description base URL is required'
 
-    if (!imageDescription.model.trim())
+    if (!activeProvider.model.trim())
         return 'Image description model is required'
 
-    if (!imageDescription.prompt.trim())
+    if (!activeProvider.prompt.trim())
         return 'Image description prompt is required'
 
-    if (imageDescription.enabled && !imageDescription.apiKey.trim())
-        return 'Image description API key is required when enabled'
+    if (imageDescription.enabled && !activeProvider.apiKey.trim())
+        return `${activeProviderLabel} API key is required when image descriptions are enabled`
 
     return ''
 }
@@ -424,7 +479,16 @@ function validateSettings(settings: TtsSettingsDraft, imageDescription: ImageDes
 function ImageDescriptionPanel(props: {
     value: ImageDescriptionSettingsDraft
     onChange: (field: keyof ImageDescriptionSettingsDraft, value: string | boolean) => void
+    onProviderChange: (
+        provider: keyof ImageDescriptionSettingsDraft['providers'],
+        field: keyof ImageDescriptionProviderDraft,
+        value: string
+    ) => void
 }) {
+    let activeProvider = props.value.provider
+    let activeSettings = props.value.providers[activeProvider]
+    let activeProviderInfo = imageDescriptionProviderDefaults[activeProvider]
+
     return <div className={classes(panelContainerStyle)}>
         <div className={classes(panelHeaderStyle)}>
             <h3 className={classes(panelTitleStyle)}>Image Description Configuration</h3>
@@ -445,12 +509,14 @@ function ImageDescriptionPanel(props: {
         <div className={classes(fieldsGridStyle)}>
             <label className={classes(fieldGroupStyle)}>
                 <span className={classes(labelStyle)}>Provider</span>
-                <input
+                <select
                     className={classes(inputStyle)}
-                    type="text"
-                    value="OpenAI-compatible"
-                    disabled
-                />
+                    value={props.value.provider}
+                    onChange={(event: ChangeEvent<HTMLSelectElement>) => props.onChange('provider', event.target.value)}
+                >
+                    <option value="openai">OpenAI</option>
+                    <option value="gemini">Google Gemini</option>
+                </select>
             </label>
 
             <label className={classes(fieldGroupStyle)}>
@@ -458,9 +524,9 @@ function ImageDescriptionPanel(props: {
                 <input
                     className={classes(inputStyle)}
                     type="password"
-                    value={props.value.apiKey}
-                    onChange={(event: ChangeEvent<HTMLInputElement>) => props.onChange('apiKey', event.target.value)}
-                    placeholder="Enter API key"
+                    value={activeSettings.apiKey}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => props.onProviderChange(activeProvider, 'apiKey', event.target.value)}
+                    placeholder={`Enter ${activeProviderInfo.label} API key`}
                     autoComplete="off"
                     spellCheck="false"
                 />
@@ -471,10 +537,11 @@ function ImageDescriptionPanel(props: {
                 <input
                     className={classes(inputStyle)}
                     type="text"
-                    value={props.value.baseUrl}
-                    onChange={(event: ChangeEvent<HTMLInputElement>) => props.onChange('baseUrl', event.target.value)}
-                    placeholder="https://api.openai.com/v1"
+                    value={activeSettings.baseUrl}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => props.onProviderChange(activeProvider, 'baseUrl', event.target.value)}
+                    placeholder={activeProviderInfo.baseUrl}
                 />
+                <span className={classes(hintStyle)}>{activeProvider == 'gemini' ? 'Use the Gemini API root. The request path is added automatically.' : 'Use an OpenAI-compatible base URL.'}</span>
             </label>
 
             <label className={classes(fieldGroupStyle)}>
@@ -482,9 +549,9 @@ function ImageDescriptionPanel(props: {
                 <input
                     className={classes(inputStyle)}
                     type="text"
-                    value={props.value.model}
-                    onChange={(event: ChangeEvent<HTMLInputElement>) => props.onChange('model', event.target.value)}
-                    placeholder="gpt-4.1-mini"
+                    value={activeSettings.model}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => props.onProviderChange(activeProvider, 'model', event.target.value)}
+                    placeholder={activeProviderInfo.model}
                 />
             </label>
 
@@ -493,13 +560,22 @@ function ImageDescriptionPanel(props: {
                 <input
                     className={classes(inputStyle)}
                     type="text"
-                    value={props.value.prompt}
-                    onChange={(event: ChangeEvent<HTMLInputElement>) => props.onChange('prompt', event.target.value)}
-                    placeholder="Describe this image briefly..."
+                    value={activeSettings.prompt}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => props.onProviderChange(activeProvider, 'prompt', event.target.value)}
+                    placeholder={activeProviderInfo.prompt}
                 />
             </label>
         </div>
     </div>
+}
+
+function sanitizeImageDescriptionProviderDraft(settings: ImageDescriptionProviderDraft) {
+    return {
+        apiKey: settings.apiKey.trim(),
+        baseUrl: settings.baseUrl.trim(),
+        model: settings.model.trim(),
+        prompt: settings.prompt.trim()
+    }
 }
 
 function ServerPanel(props: {

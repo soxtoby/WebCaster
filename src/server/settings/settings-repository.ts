@@ -5,7 +5,7 @@ import { elevenLabsDefaults } from "../tts/elevenlabs"
 import { inworldDefaults } from "../tts/inworld"
 import { lemonFoxDefaults } from "../tts/lemonfox"
 import { openAiDefaults } from "../tts/openai"
-import { defaultImageDescriptionSettings, defaultServerSettings, imageDescriptionProviders, ttsProviders, type ImageDescriptionProvider, type ImageDescriptionSettings, type ServerSettings, type SettingsState, type TtsProvider, type VoiceRecord } from "./settings-types"
+import { defaultImageDescriptionProviderSettings, defaultImageDescriptionSettings, defaultServerSettings, imageDescriptionProviders, ttsProviders, type ImageDescriptionProvider, type ImageDescriptionProviderState, type ImageDescriptionSettings, type ServerSettings, type SettingsState, type TtsProvider, type VoiceRecord } from "./settings-types"
 
 export function listProviderSettings(): SettingsState {
     let rows = database.select().from(ttsProviderSettingsTable).all()
@@ -51,6 +51,7 @@ export function saveProviderSettings(settings: SettingsState) {
 export function listImageDescriptionSettings(): ImageDescriptionSettings {
     let rows = database.select().from(appSettingsTable).all()
     let map = new Map(rows.map(r => [r.key, r.value]))
+    let defaults = createDefaultImageDescriptionSettings()
 
     let provider = map.get('imageDescription.provider') || defaultImageDescriptionSettings.provider
     let parsedProvider = isImageDescriptionProvider(provider) ? provider : defaultImageDescriptionSettings.provider
@@ -58,10 +59,10 @@ export function listImageDescriptionSettings(): ImageDescriptionSettings {
     return {
         enabled: map.get('imageDescription.enabled') == 'true',
         provider: parsedProvider,
-        apiKey: map.get('imageDescription.apiKey') || '',
-        baseUrl: map.get('imageDescription.baseUrl') || defaultImageDescriptionSettings.baseUrl,
-        model: map.get('imageDescription.model') || defaultImageDescriptionSettings.model,
-        prompt: map.get('imageDescription.prompt') || defaultImageDescriptionSettings.prompt
+        providers: {
+            openai: readImageDescriptionProviderSettings(map, 'openai', defaults.providers),
+            gemini: readImageDescriptionProviderSettings(map, 'gemini', defaults.providers)
+        }
     }
 }
 
@@ -69,10 +70,14 @@ export function saveImageDescriptionSettings(settings: ImageDescriptionSettings)
     upsertAppSettings([
         { key: 'imageDescription.enabled', value: String(settings.enabled) },
         { key: 'imageDescription.provider', value: settings.provider },
-        { key: 'imageDescription.apiKey', value: settings.apiKey },
-        { key: 'imageDescription.baseUrl', value: settings.baseUrl },
-        { key: 'imageDescription.model', value: settings.model },
-        { key: 'imageDescription.prompt', value: settings.prompt }
+        { key: 'imageDescription.openai.apiKey', value: settings.providers.openai.apiKey },
+        { key: 'imageDescription.openai.baseUrl', value: settings.providers.openai.baseUrl },
+        { key: 'imageDescription.openai.model', value: settings.providers.openai.model },
+        { key: 'imageDescription.openai.prompt', value: settings.providers.openai.prompt },
+        { key: 'imageDescription.gemini.apiKey', value: settings.providers.gemini.apiKey },
+        { key: 'imageDescription.gemini.baseUrl', value: settings.providers.gemini.baseUrl },
+        { key: 'imageDescription.gemini.model', value: settings.providers.gemini.model },
+        { key: 'imageDescription.gemini.prompt', value: settings.providers.gemini.prompt }
     ])
 }
 
@@ -189,4 +194,50 @@ function isProviderType(value: string): value is TtsProvider {
 
 function isImageDescriptionProvider(value: string): value is ImageDescriptionProvider {
     return imageDescriptionProviders.includes(value as ImageDescriptionProvider)
+}
+
+function createDefaultImageDescriptionSettings(): ImageDescriptionSettings {
+    return {
+        enabled: defaultImageDescriptionSettings.enabled,
+        provider: defaultImageDescriptionSettings.provider,
+        providers: {
+            openai: { ...defaultImageDescriptionProviderSettings.openai },
+            gemini: { ...defaultImageDescriptionProviderSettings.gemini }
+        }
+    }
+}
+
+function readImageDescriptionProviderSettings(
+    map: Map<string, string>,
+    provider: ImageDescriptionProvider,
+    defaults: ImageDescriptionProviderState
+) {
+    let fallbackPrefix = provider == 'openai' ? 'imageDescription' : ''
+
+    return {
+        apiKey: readImageDescriptionValue(map, provider, 'apiKey', defaults[provider].apiKey, fallbackPrefix),
+        baseUrl: readImageDescriptionValue(map, provider, 'baseUrl', defaults[provider].baseUrl, fallbackPrefix),
+        model: readImageDescriptionValue(map, provider, 'model', defaults[provider].model, fallbackPrefix),
+        prompt: readImageDescriptionValue(map, provider, 'prompt', defaults[provider].prompt, fallbackPrefix)
+    }
+}
+
+function readImageDescriptionValue(
+    map: Map<string, string>,
+    provider: ImageDescriptionProvider,
+    field: 'apiKey' | 'baseUrl' | 'model' | 'prompt',
+    defaultValue: string,
+    fallbackPrefix: string
+) {
+    let providerValue = map.get(`imageDescription.${provider}.${field}`)
+    if (providerValue != null)
+        return providerValue
+
+    if (fallbackPrefix) {
+        let legacyValue = map.get(`${fallbackPrefix}.${field}`)
+        if (legacyValue != null)
+            return legacyValue
+    }
+
+    return defaultValue
 }

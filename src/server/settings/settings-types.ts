@@ -10,16 +10,22 @@ export type TtsProviderSettings = {
     baseUrl: string
 }
 
-export let imageDescriptionProviders = ['openai'] as const
+export let imageDescriptionProviders = ['openai', 'gemini'] as const
 export type ImageDescriptionProvider = (typeof imageDescriptionProviders)[number]
 
-export type ImageDescriptionSettings = {
-    enabled: boolean
-    provider: ImageDescriptionProvider
+export type ImageDescriptionProviderSettings = {
     apiKey: string
     baseUrl: string
     model: string
     prompt: string
+}
+
+export type ImageDescriptionProviderState = Record<ImageDescriptionProvider, ImageDescriptionProviderSettings>
+
+export type ImageDescriptionSettings = {
+    enabled: boolean
+    provider: ImageDescriptionProvider
+    providers: ImageDescriptionProviderState
 }
 
 export type SettingsState = Record<TtsProvider, TtsProviderSettings>
@@ -44,22 +50,46 @@ export let defaultServerSettings = {
     passwordConfigured: false
 } as const satisfies ServerSettings
 
+let defaultImageDescriptionPrompt = 'Describe this image briefly and factually for podcast narration. Focus on visible details only.'
+
+export let defaultImageDescriptionProviderSettings = {
+    openai: {
+        apiKey: '',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-4.1-mini',
+        prompt: defaultImageDescriptionPrompt
+    },
+    gemini: {
+        apiKey: '',
+        baseUrl: 'https://generativelanguage.googleapis.com',
+        model: 'gemini-2.0-flash',
+        prompt: defaultImageDescriptionPrompt
+    }
+} as const satisfies ImageDescriptionProviderState
+
 export let defaultImageDescriptionSettings = {
     enabled: false,
     provider: 'openai',
-    apiKey: '',
-    baseUrl: 'https://api.openai.com/v1',
-    model: 'gpt-4.1-mini',
-    prompt: 'Describe this image briefly and factually for podcast narration. Focus on visible details only.'
+    providers: {
+        openai: { ...defaultImageDescriptionProviderSettings.openai },
+        gemini: { ...defaultImageDescriptionProviderSettings.gemini }
+    }
 } as const satisfies ImageDescriptionSettings
 
-let ImageDescriptionSettingsInput = object({
-    enabled: boolean(),
-    provider: picklist(imageDescriptionProviders),
+let ImageDescriptionProviderSettingsInput = object({
     apiKey: pipe(string(), trim()),
     baseUrl: pipe(string(), trim()),
     model: pipe(string(), trim()),
     prompt: pipe(string(), trim())
+})
+
+let ImageDescriptionSettingsInput = object({
+    enabled: boolean(),
+    provider: picklist(imageDescriptionProviders),
+    providers: object({
+        openai: ImageDescriptionProviderSettingsInput,
+        gemini: ImageDescriptionProviderSettingsInput
+    })
 })
 
 export type SettingsInput = InferOutput<typeof SettingsInput>

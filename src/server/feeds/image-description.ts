@@ -1,5 +1,5 @@
 import { listImageDescriptionSettings } from "../settings/settings-repository"
-import { type ImageDescriptionSettings } from "../settings/settings-types"
+import { type ImageDescriptionProviderSettings, type ImageDescriptionSettings } from "../settings/settings-types"
 
 type ImageTag = {
     tag: string
@@ -50,14 +50,15 @@ async function describeImage(
     if (!resolvedUrl)
         return fallback
 
-    let cacheKey = `${settings.provider}|${settings.model}|${resolvedUrl}`
+    let providerSettings = settings.providers[settings.provider]
+    let cacheKey = `${settings.provider}|${providerSettings.model}|${resolvedUrl}`
     if (!options.forceRegenerate) {
         let cached = descriptionCache.get(cacheKey)
         if (cached)
             return cached
     }
 
-    let described = await describeWithProvider(settings, resolvedUrl, image.alt, image.title)
+    let described = await describeWithProvider(settings.provider, providerSettings, resolvedUrl, image.alt, image.title)
     if (!described)
         return fallback
 
@@ -65,14 +66,23 @@ async function describeImage(
     return described
 }
 
-async function describeWithProvider(settings: ImageDescriptionSettings, imageUrl: string, altText: string, titleText: string) {
-    if (settings.provider == 'openai')
+async function describeWithProvider(
+    provider: ImageDescriptionSettings['provider'],
+    settings: ImageDescriptionProviderSettings,
+    imageUrl: string,
+    altText: string,
+    titleText: string
+) {
+    if (provider == 'openai')
         return await describeWithOpenAi(settings, imageUrl, altText, titleText)
+
+    if (provider == 'gemini')
+        return await describeWithGemini(settings, imageUrl, altText, titleText)
 
     return null
 }
 
-async function describeWithOpenAi(settings: ImageDescriptionSettings, imageUrl: string, altText: string, titleText: string) {
+async function describeWithOpenAi(settings: ImageDescriptionProviderSettings, imageUrl: string, altText: string, titleText: string) {
     if (!settings.apiKey.trim())
         return null
 
@@ -121,6 +131,78 @@ async function describeWithOpenAi(settings: ImageDescriptionSettings, imageUrl: 
         let json = await response.json() as any
         let output = json?.choices?.[0]?.message?.content
         let normalized = normalizeDescription(typeof output == 'string' ? output : '')
+
+        if (normalized)
+            return normalized
+
+        return null
+    }
+    catch {
+        return null
+    }
+    finally {
+        clearTimeout(timeoutHandle)
+    }
+}
+
+async function describeWithGemini(settings: ImageDescriptionProviderSettings, imageUrl: string, altText: string, titleText: string) {
+    if (!settings.apiKey.trim())
+        return null
+
+    let controller = new AbortController()
+    let timeoutHandle = setTimeout(() => controller.abort(), imageDescriptionTimeoutMs)
+
+    try {
+        let imageData = await fetchImageData(imageUrl, controller.signal)
+        if (!imageData)
+            return null
+
+        let response = await fetch(buildGeminiUrl(settings.baseUrl, settings.model), {
+            method: 'POST',
+            signal: controller.signal,
+            headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': settings.apiKey
+            },
+            body: JSON.stringify({
+                systemInstruction: {
+                    parts: [
+                        {
+                            text: settings.prompt
+                        }
+                    ]
+                },
+                generationConfig: {
+                    temperature: 0.2,
+                    maxOutputTokens: 120
+                },
+                contents: [
+                    {
+                        role: 'user',
+                        parts: [
+                            {
+                                text: buildImageContextPrompt(altText, titleText)
+                            },
+                            {
+                                inlineData: {
+                                    mimeType: imageData.mimeType,
+                                    data: imageData.data
+                                }
+                            }
+                        ]
+                    }
+                ]
+            })
+        })
+
+        if (!response.ok) {
+            console.error('Gemini image description request failed: ' + response.status + ' ' + response.statusText + '\n' + await response.text())
+            return null
+        }
+
+        let json = await response.json() as any
+        let output = extractGeminiText(json)
+        let normalized = normalizeDescription(output)
 
         if (normalized)
             return normalized
@@ -202,6 +284,64 @@ function buildUrl(baseUrl: string, endpoint: string) {
     let normalizedBase = baseUrl.trim().replace(/\/+$/, '')
     let normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
     return normalizedBase + normalizedEndpoint
+}
+
+function buildGeminiUrl(baseUrl: string, model: string) {
+    let normalizedBase = baseUrl.trim().replace(/\/+$/, '')
+    let path = /\/v\d+(alpha|beta)?$/i.test(normalizedBase)
+        ? ''
+        : '/v1beta'
+
+    return `${normalizedBase}${path}/models/${encodeURIComponent(model)}:generateContent`
+}
+
+async function fetchImageData(imageUrl: string, signal: AbortSignal) {
+    let response = await fetch(imageUrl, { signal })
+    if (!response.ok)
+        return null
+
+    let mimeType = normalizeImageMimeType(response.headers.get('content-type'), imageUrl)
+    if (!mimeType)
+        return null
+
+    let bytes = await response.arrayBuffer()
+
+    return {
+        mimeType,
+        data: Buffer.from(bytes).toString('base64')
+    }
+}
+
+function extractGeminiText(json: any) {
+    let parts = json?.candidates?.[0]?.content?.parts
+    if (!Array.isArray(parts))
+        return ''
+
+    return parts
+        .map(part => typeof part?.text == 'string' ? part.text : '')
+        .filter(Boolean)
+        .join(' ')
+}
+
+function normalizeImageMimeType(contentType: string | null, imageUrl: string) {
+    let headerType = contentType?.split(';')[0]?.trim().toLowerCase() || ''
+    if (headerType.startsWith('image/'))
+        return headerType
+
+    let pathname = (imageUrl.split('?')[0] || '').toLowerCase()
+
+    if (pathname.endsWith('.png'))
+        return 'image/png'
+    if (pathname.endsWith('.webp'))
+        return 'image/webp'
+    if (pathname.endsWith('.gif'))
+        return 'image/gif'
+    if (pathname.endsWith('.svg'))
+        return 'image/svg+xml'
+    if (pathname.endsWith('.jpg') || pathname.endsWith('.jpeg'))
+        return 'image/jpeg'
+
+    return 'image/jpeg'
 }
 
 function decodeEntities(value: string) {
