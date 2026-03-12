@@ -7,10 +7,11 @@ import { appRouter } from "./trpc/app-router"
 import { buildTrpcContext } from "./trpc/trpc"
 import { streamVoicePreviewAudio } from "./tts/voice-preview"
 
-let server: Server<undefined>
+let server: Server<undefined> | null = null
 
 export function restartServer(hostname: string, port: number) {
     server?.stop()
+    server = null
     let url = startServer(hostname, port)
     console.log(`🔄 Server restarted at ${url} (${getServerBaseUrl()})`)
 }
