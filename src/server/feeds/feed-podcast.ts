@@ -218,6 +218,25 @@ export async function regenerateEpisodeTranscript(feedId: number, episodeKey: st
     }
 }
 
+export async function updateEpisodeTranscript(feedId: number, episodeKey: string, transcript: string) {
+    let feed = database.select().from(feedsTable).where(eq(feedsTable.id, feedId)).get()
+    if (!feed)
+        return { ok: false as const, reason: 'feed_not_found' as const }
+
+    let article = findArticleByEpisodeKey(feed.id, episodeKey)
+    if (!article)
+        return { ok: false as const, reason: 'episode_not_found' as const }
+
+    storeEpisodeTranscript(article, transcript)
+
+    return {
+        ok: true as const,
+        transcript,
+        title: article.title,
+        sourceUrl: article.sourceUrl
+    }
+}
+
 async function syncAllFeeds(limit: number) {
     let feeds = database.select().from(feedsTable).all()
     for (let feed of feeds)

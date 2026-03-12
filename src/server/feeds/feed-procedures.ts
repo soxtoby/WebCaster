@@ -1,9 +1,9 @@
 import { TRPCError } from "@trpc/server"
 import { procedure } from "../trpc/trpc"
 import { fetchFeed, type ParsedFeedArticle } from "./feed-parsing"
-import { getEpisodeTranscript, insertFeedArticles, listFeedEpisodes, regenerateEpisodeTranscript as rebuildEpisodeTranscript, setEpisodeVoiceOverride } from "./feed-podcast"
+import { getEpisodeTranscript, insertFeedArticles, listFeedEpisodes, regenerateEpisodeTranscript as rebuildEpisodeTranscript, setEpisodeVoiceOverride, updateEpisodeTranscript as saveEpisodeTranscript } from "./feed-podcast"
 import { createFeed as createFeedRecord, deleteFeedById as deleteFeedRecordById, getFeedById as getFeedRecordById, listFeeds as listFeedRecords, updateFeedById as updateFeedRecordById } from "./feed-repository"
-import { EpisodeTranscriptInput, EpisodeVoiceInput, FeedIdInput, FeedInput, FeedUpdateInput } from "./feed-types"
+import { EpisodeTranscriptInput, EpisodeTranscriptUpdateInput, EpisodeVoiceInput, FeedIdInput, FeedInput, FeedUpdateInput } from "./feed-types"
 
 type EnrichedFeedInput = FeedInput & { description?: string | null; imageUrl?: string | null }
 
@@ -113,6 +113,26 @@ export const regenerateEpisodeTranscript = procedure
     .input(EpisodeTranscriptInput)
     .mutation(async ({ input }) => {
         let result = await rebuildEpisodeTranscript(input.id, input.episodeKey)
+
+        if (!result.ok) {
+            if (result.reason == 'feed_not_found')
+                throw new TRPCError({ code: 'NOT_FOUND', message: 'Feed not found' })
+
+            if (result.reason == 'episode_not_found')
+                throw new TRPCError({ code: 'NOT_FOUND', message: 'Episode not found' })
+        }
+
+        return {
+            transcript: result.transcript,
+            title: result.title,
+            sourceUrl: result.sourceUrl
+        }
+    })
+
+export const updateEpisodeTranscript = procedure
+    .input(EpisodeTranscriptUpdateInput)
+    .mutation(async ({ input }) => {
+        let result = await saveEpisodeTranscript(input.id, input.episodeKey, input.transcript)
 
         if (!result.ok) {
             if (result.reason == 'feed_not_found')

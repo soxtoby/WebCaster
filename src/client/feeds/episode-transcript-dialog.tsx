@@ -13,11 +13,15 @@ export function EpisodeTranscriptDialog(props: {
     episode: EpisodeTranscriptTarget
 }) {
     let [transcriptText, setTranscriptText] = useState('')
+    let [transcriptDraft, setTranscriptDraft] = useState('')
     let [transcriptStatus, setTranscriptStatus] = useState('')
     let [transcriptError, setTranscriptError] = useState('')
+    let [isLoadingTranscript, setIsLoadingTranscript] = useState(false)
     let [isRegeneratingTranscript, setIsRegeneratingTranscript] = useState(false)
+    let [isSavingTranscript, setIsSavingTranscript] = useState(false)
     let requestVersionRef = useRef(0)
     let dialogId = buildEpisodeTranscriptDialogId(props.episode.episodeKey)
+    let hasUnsavedChanges = transcriptDraft != transcriptText
 
     return <dialog
         id={dialogId}
@@ -48,10 +52,14 @@ export function EpisodeTranscriptDialog(props: {
         <div className={classes(transcriptDialogBodyStyle)}>
             {transcriptStatus ? <p className={classes(transcriptDialogStatusStyle)}>{transcriptStatus}</p> : null}
             {transcriptError ? <p className={classes(transcriptDialogErrorStyle)}>{transcriptError}</p> : null}
-            {transcriptText ? <pre className={classes(transcriptContentStyle)}>{transcriptText}</pre> : null}
-            {!transcriptText && !transcriptError && !transcriptStatus
-                ? <p className={classes(transcriptDialogStatusStyle)}>No transcript available.</p>
-                : null}
+            <textarea
+                className={classes(transcriptContentInputStyle)}
+                value={transcriptDraft}
+                onInput={event => setTranscriptDraft(event.currentTarget.value)}
+                disabled={isLoadingTranscript || isRegeneratingTranscript || isSavingTranscript}
+                placeholder={isLoadingTranscript ? '' : 'No transcript available yet. You can paste or type one here.'}
+                rows={16}
+            />
         </div>
 
         <div className={classes(transcriptDialogFooterStyle)}>
@@ -65,8 +73,21 @@ export function EpisodeTranscriptDialog(props: {
             </button>
             <button
                 className={classes([transcriptFooterButtonStyle, transcriptPrimaryButtonStyle])}
+                onClick={() => void saveTranscript()}
+                disabled={
+                    isLoadingTranscript
+                    || isRegeneratingTranscript
+                    || isSavingTranscript
+                    || !hasUnsavedChanges
+                }
+                type="button"
+            >
+                {isSavingTranscript ? 'Saving...' : 'Save'}
+            </button>
+            <button
+                className={classes([transcriptFooterButtonStyle, transcriptPrimaryButtonStyle])}
                 onClick={() => void regenerateTranscript()}
-                disabled={isRegeneratingTranscript || transcriptStatus == 'Loading transcript...'}
+                disabled={isRegeneratingTranscript || isLoadingTranscript || isSavingTranscript}
                 type="button"
             >
                 {isRegeneratingTranscript ? 'Regenerating...' : 'Regenerate'}
@@ -77,7 +98,7 @@ export function EpisodeTranscriptDialog(props: {
     async function loadTranscript() {
         let requestVersion = ++requestVersionRef.current
 
-        setTranscriptText('')
+        setIsLoadingTranscript(true)
         setTranscriptStatus('Loading transcript...')
         setTranscriptError('')
 
@@ -91,6 +112,7 @@ export function EpisodeTranscriptDialog(props: {
                 return
 
             setTranscriptText(transcript)
+            setTranscriptDraft(transcript)
             setTranscriptStatus('')
         }
         catch (cause) {
@@ -100,6 +122,9 @@ export function EpisodeTranscriptDialog(props: {
             let message = cause instanceof Error ? cause.message : 'Failed to load transcript'
             setTranscriptError(message)
             setTranscriptStatus('')
+        } finally {
+            if (requestVersion == requestVersionRef.current)
+                setIsLoadingTranscript(false)
         }
     }
 
@@ -120,6 +145,7 @@ export function EpisodeTranscriptDialog(props: {
                 return
 
             setTranscriptText(transcript)
+            setTranscriptDraft(transcript)
             setTranscriptStatus('Transcript regenerated')
         }
         catch (cause) {
@@ -133,6 +159,39 @@ export function EpisodeTranscriptDialog(props: {
         finally {
             if (requestVersion == requestVersionRef.current)
                 setIsRegeneratingTranscript(false)
+        }
+    }
+
+    async function saveTranscript() {
+        let requestVersion = ++requestVersionRef.current
+
+        setTranscriptError('')
+        setTranscriptStatus('Saving transcript...')
+        setIsSavingTranscript(true)
+
+        try {
+            let result = await api.feeds.updateEpisodeTranscript.mutate({
+                id: props.feedId,
+                episodeKey: props.episode.episodeKey,
+                transcript: transcriptDraft
+            })
+
+            if (requestVersion != requestVersionRef.current)
+                return
+
+            setTranscriptText(result.transcript)
+            setTranscriptDraft(result.transcript)
+            setTranscriptStatus('Transcript saved')
+        } catch (cause) {
+            if (requestVersion != requestVersionRef.current)
+                return
+
+            let message = cause instanceof Error ? cause.message : 'Failed to save transcript'
+            setTranscriptError(message)
+            setTranscriptStatus('')
+        } finally {
+            if (requestVersion == requestVersionRef.current)
+                setIsSavingTranscript(false)
         }
     }
 }
@@ -249,7 +308,10 @@ let transcriptDialogErrorStyle = style('transcriptDialogError', {
     fontWeight: 500
 })
 
-let transcriptContentStyle = style('transcriptContent', {
+let transcriptContentInputStyle = style('transcriptContentInput', {
+    width: '100%',
+    minHeight: 240,
+    resize: 'vertical',
     margin: 0,
     textAlign: 'left',
     whiteSpace: 'pre-wrap',
@@ -260,7 +322,19 @@ let transcriptContentStyle = style('transcriptContent', {
     backgroundColor: 'var(--bg)',
     border: '1px solid var(--border)',
     borderRadius: 8,
-    padding: 12
+    padding: 12,
+    color: 'var(--text)',
+    $: {
+        '&:focus-visible': {
+            outline: '2px solid color-mix(in srgb, var(--accent) 40%, transparent)',
+            outlineOffset: 1,
+            borderColor: 'var(--accent)'
+        },
+        '&:disabled': {
+            opacity: 0.8,
+            cursor: 'not-allowed'
+        }
+    }
 })
 
 let transcriptDialogFooterStyle = style('transcriptDialogFooter', {

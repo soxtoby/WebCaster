@@ -1,5 +1,5 @@
 import { router } from "../trpc/trpc"
-import { create, deleteFeed, episodeTranscript, episodes, list, regenerateEpisodeTranscript, setEpisodeVoice, update } from "./feed-procedures"
+import { create, deleteFeed, episodeTranscript, episodes, list, regenerateEpisodeTranscript, setEpisodeVoice, update, updateEpisodeTranscript } from "./feed-procedures"
 
 export let feeds = router({
     feeds: {
@@ -7,6 +7,7 @@ export let feeds = router({
         episodes,
         episodeTranscript,
         regenerateEpisodeTranscript,
+        updateEpisodeTranscript,
         setEpisodeVoice,
         create,
         update,

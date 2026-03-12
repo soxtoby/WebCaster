@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Can manually edit an episode's transcript.
+
 ## V1.0.2
 
 ### Added
