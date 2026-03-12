@@ -1,14 +1,21 @@
 # Changelog
 
-## Unreleased
+## V1.0.2
 
 ### Added
 - Confirmation prompt when deleting a feed.
-- Option to provide an OpenAI API key to produce audio descriptions for images.
+- Option to provide an OpenAI API or Gemini key to produce audio descriptions for images.
+- Per-episode voice selection.
+- Preview the transcript of an episode.
+- Server address can start with https:// to indicate a secure connection.
 
 ### Fixed
 - Gender in voice description is detected instead of guessing from name.
 - New feed is selected after it's created.
+- Settings dialog scrolls properly on smaller screens.
+- Canceling settings dialog discards changes.
+- Podcast RSS is valid now.
+- Fixing restart after changing server configuration.
 
 ## V1.0.1
 
