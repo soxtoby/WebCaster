@@ -138,10 +138,12 @@ export function getServerSettings(): ServerSettings {
     let rows = database.select().from(appSettingsTable).all()
     let map = new Map(rows.map(r => [r.key, r.value]))
 
+    let protocolRaw = map.get('server.protocol')
     let listenRaw = map.get('server.listenOnAllInterfaces')
     let portRaw = map.get('server.port')
 
     return {
+        protocol: protocolRaw == 'https' ? 'https' : defaultServerSettings.protocol,
         hostname: map.get('server.hostname') || defaultServerSettings.hostname,
         port: portRaw != null ? (parseInt(portRaw, 10) || null) : null,
         listenOnAllInterfaces: listenRaw != null ? listenRaw == 'true' : defaultServerSettings.listenOnAllInterfaces,
@@ -151,6 +153,7 @@ export function getServerSettings(): ServerSettings {
 
 export function saveServerSettings(settings: ServerSettings) {
     upsertAppSettings([
+        { key: 'server.protocol', value: settings.protocol },
         { key: 'server.hostname', value: settings.hostname },
         { key: 'server.port', value: String(settings.port) },
         { key: 'server.listenOnAllInterfaces', value: String(settings.listenOnAllInterfaces) }
@@ -176,7 +179,7 @@ function upsertAppSettings(entries: Array<{ key: string, value: string }>) {
 }
 
 function baseUrl(settings: ServerSettings) {
-    return `http://${settings.hostname}:${settings.port}`
+    return `${settings.protocol}://${settings.hostname}:${settings.port}`
 }
 
 function createDefaultSettings(): SettingsState {

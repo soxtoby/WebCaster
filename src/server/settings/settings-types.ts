@@ -37,6 +37,7 @@ let ProviderSettingsInput = object({
 })
 
 export type ServerSettings = {
+    protocol: 'http' | 'https'
     hostname: string
     port: number | null
     listenOnAllInterfaces: boolean
@@ -44,6 +45,7 @@ export type ServerSettings = {
 }
 
 export let defaultServerSettings = {
+    protocol: 'http',
     hostname: osHostname(),
     port: 80,
     listenOnAllInterfaces: true,
@@ -102,6 +104,7 @@ export const SettingsInput = object({
     }),
     imageDescription: ImageDescriptionSettingsInput,
     server: object({
+        protocol: picklist(['http', 'https']),
         hostname: pipe(string(), trim()),
         port: pipe(
             number('Port must be a number'),

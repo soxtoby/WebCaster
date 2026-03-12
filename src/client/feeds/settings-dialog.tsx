@@ -18,11 +18,12 @@ export type TtsSettingsDraft = {
 }
 
 export type ServerSettingsDraft = {
-    hostname: string
+    address: string
     port: string
     listenOnAllInterfaces: boolean
     password: string
     passwordConfigured: boolean
+    protocol: 'http' | 'https'
 }
 
 export type ImageDescriptionProviderDraft = {
@@ -230,6 +231,12 @@ export function SettingsDialog(props: {
             return
         }
 
+        let parsedAddress = parseServerAddress(serverDraft.address)
+        if (parsedAddress.error) {
+            setError(parsedAddress.error)
+            return
+        }
+
         try {
             setIsSaving(true)
             let enteredPassword = serverDraft.password.trim()
@@ -244,7 +251,8 @@ export function SettingsDialog(props: {
                     }
                 },
                 server: {
-                    hostname: serverDraft.hostname.trim(),
+                    protocol: parsedAddress.protocol,
+                    hostname: parsedAddress.hostname,
                     port: portNum,
                     listenOnAllInterfaces: serverDraft.listenOnAllInterfaces,
                     password: enteredPassword
@@ -370,11 +378,12 @@ function createDefaultSettingsDraft(): TtsSettingsDraft {
 
 function createDefaultServerDraft(): ServerSettingsDraft {
     return {
-        hostname: '',
+        address: '',
         port: '80',
         listenOnAllInterfaces: true,
         password: '',
-        passwordConfigured: false
+        passwordConfigured: false,
+        protocol: 'http'
     }
 }
 
@@ -419,13 +428,36 @@ function createSavedSettingsSnapshotFromResponse(response: SettingsResponse): Sa
             }
         },
         serverDraft: {
-            hostname: response.server.hostname,
+            address: formatServerAddress(response.server.protocol, response.server.hostname),
             port: String(response.server.port ?? 80),
             listenOnAllInterfaces: response.server.listenOnAllInterfaces,
             password: '',
-            passwordConfigured: response.server.passwordConfigured
+            passwordConfigured: response.server.passwordConfigured,
+            protocol: response.server.protocol
         }
     })
+}
+
+function parseServerAddress(address: string) {
+    address = address.trim()
+    if (!address.toLowerCase().startsWith('http'))
+        address = 'http://' + address
+
+    let url: URL
+    try {
+        url = new URL(address)
+    } catch {
+        return { error: "Server address must be a hostname or IP address, with optional http:// or https:// prefix." } as const
+    }
+
+    return {
+        protocol: url.protocol == 'https:' ? 'https' : 'http',
+        hostname: url.hostname
+    } as const
+}
+
+function formatServerAddress(protocol: 'http' | 'https', hostname: string) {
+    return `${protocol}://${hostname}`
 }
 
 function ProviderPanel(props: {
@@ -630,11 +662,11 @@ function ServerPanel(props: {
                 <input
                     className={classes(inputStyle)}
                     type="text"
-                    value={props.value.hostname}
-                    onChange={(event: ChangeEvent<HTMLInputElement>) => props.onChange('hostname', event.target.value)}
-                    placeholder="my-machine"
+                    value={props.value.address}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => props.onChange('address', event.target.value)}
+                    placeholder="http://my-machine"
                 />
-                <span className={classes(hintStyle)}>Hostname or IP used in podcast and episode URLs</span>
+                <span className={classes(hintStyle)}>Hostname or IP used in podcast and episode URLs. Optional http:// or https:// prefix. Defaults to http.</span>
             </label>
 
             <label className={classes(fieldGroupStyle)}>

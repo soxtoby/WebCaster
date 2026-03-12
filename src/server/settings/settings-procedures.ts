@@ -22,13 +22,15 @@ export const save = procedure
 
         let previous = getServerSettings()
         saveServerSettings({
+            protocol: input.server.protocol,
             hostname: input.server.hostname,
             port: input.server.port,
             listenOnAllInterfaces: input.server.listenOnAllInterfaces,
             passwordConfigured: previous.passwordConfigured
         })
 
-        let changed = previous.hostname != input.server.hostname
+        let changed = previous.protocol != input.server.protocol
+            || previous.hostname != input.server.hostname
             || previous.port != input.server.port
             || previous.listenOnAllInterfaces != input.server.listenOnAllInterfaces
         let redirectUrl: string | null = null
