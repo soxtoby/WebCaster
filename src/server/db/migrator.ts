@@ -22,10 +22,14 @@ export async function migrate(db: Database): Promise<void> {
         .filter(e => !lastApplied || e.when > lastApplied.created_at)
 
     if (pending.length) {
+        let embeddedScripts = new Map(Bun.embeddedFiles
+            .map(f => [(f as BunFile).name!, f] as const)
+            .filter(([name]) => name.startsWith('drizzle/') && name.endsWith('.sql')))
+
         let loaded = await Promise.all(pending
             .map(async e => ({
                 entry: e,
-                rawSql: await readAsset(`${e.tag}.sql`, `./drizzle/${e.tag}.sql`),
+                rawSql: await readScript(e.tag, embeddedScripts),
             })))
 
         db.transaction(() => {
@@ -53,8 +57,8 @@ function run(db: Database, entry: typeof journal.entries[number], stmt: string) 
     }
 }
 
-function readAsset(name: string, fallbackPath: string) {
-    let blob = Bun.embeddedFiles.find(f => (f as BunFile).name == name)
-    return blob?.text()
-        ?? Bun.file(fallbackPath).text()
+function readScript(name: string, embeddedScripts: Map<string, Blob>) {
+    let blob = embeddedScripts.get(`drizzle/${name}.sql`)
+        ?? Bun.file(`./drizzle/${name}.sql`)
+    return blob.text()
 }

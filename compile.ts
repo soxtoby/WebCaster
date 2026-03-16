@@ -20,7 +20,9 @@ let result = await build({
             version: CURRENT_VERSION,
         },
     },
-    naming: '[name].[ext]',
+    naming: {
+        asset: '[dir]/[name].[ext]'
+    },
     define: {
         'process.env.NODE_ENV': '"production"',
     },
