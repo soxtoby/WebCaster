@@ -26,6 +26,11 @@ type FeedEpisode = {
     audioReady: boolean
     audioUrl: string
     voice: string | null
+    progressPercent: number
+    chunksProcessed: number
+    chunksTotal: number
+    progressMode: string
+    estimatedSecondsRemaining: number
 }
 
 export function FeedManagerPage() {
@@ -102,6 +107,22 @@ export function FeedManagerPage() {
             setEpisodes([])
         }
     }, [selectedFeedId])
+
+    useEffect(() => {
+        if (selectedFeedId == null)
+            return
+
+        if (!episodes.some(episode => episode.status == 'generating'))
+            return
+
+        let timer = setInterval(() => {
+            void loadEpisodes(selectedFeedId)
+        }, 5000)
+
+        return () => {
+            clearInterval(timer)
+        }
+    }, [selectedFeedId, episodes])
 
     useEffect(() => {
         void loadVoices()
@@ -200,6 +221,21 @@ export function FeedManagerPage() {
                         setDraft(current => ({ ...current, [field]: value }))
                     }}
                     onPlayEpisode={episode => {
+                        if (!episode.audioReady && episode.status != 'generating') {
+                            setEpisodes(current => current.map(entry => entry.episodeKey == episode.episodeKey
+                                ? {
+                                    ...entry,
+                                    status: 'generating',
+                                    progressPercent: Math.max(1, entry.progressPercent),
+                                    progressMode: entry.progressMode == 'none' ? 'estimated' : entry.progressMode
+                                }
+                                : entry
+                            ))
+
+                            if (selectedFeed)
+                                void loadEpisodes(selectedFeed.id)
+                        }
+
                         setActiveEpisodeKey(episode.episodeKey)
                         setActiveEpisodeAudioUrl(episode.audioUrl)
                     }}

@@ -1,5 +1,5 @@
 import { createServer } from "net"
-import { startFeedPolling } from "./feeds/feed-podcast"
+import { resetInterruptedEpisodeGeneration, startFeedPolling } from "./feeds/feed-podcast"
 import { setupNotificationIcon } from "./notification-icon"
 import { startServer } from "./serve"
 import { getServerBaseUrl, getServerSettings, saveServerSettings } from "./settings/settings-repository"
@@ -16,6 +16,8 @@ if (settings.port == null) {
 let url = startServer(settings.listenOnAllInterfaces ? '0.0.0.0' : settings.hostname, settings.port)
 
 console.log(`🚀 Server running at ${url} (${getServerBaseUrl()})`)
+
+await resetInterruptedEpisodeGeneration()
 
 startFeedPolling()
 

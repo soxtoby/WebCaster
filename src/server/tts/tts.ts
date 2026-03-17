@@ -9,6 +9,10 @@ export type StreamedAudio = {
     mimeType: string
 }
 
+export type StreamSpeechOptions = {
+    onChunkProgress?: (progress: { chunksProcessed: number; chunksTotal: number }) => void
+}
+
 export async function listVoices(providerType: TtsProvider, settings: TtsProviderSettings): Promise<VoiceRecord[]> {
     if (!settings.enabled || !settings.apiKey.trim())
         return []
@@ -25,7 +29,7 @@ export async function listVoices(providerType: TtsProvider, settings: TtsProvide
     return await listLemonFoxVoices(settings)
 }
 
-export async function streamSpeech(provider: TtsProvider, providerVoiceId: string, text: string, providerSettings: Record<TtsProvider, TtsProviderSettings>): Promise<StreamedAudio> {
+export async function streamSpeech(provider: TtsProvider, providerVoiceId: string, text: string, providerSettings: Record<TtsProvider, TtsProviderSettings>, options?: StreamSpeechOptions): Promise<StreamedAudio> {
     let settings = providerSettings[provider]
     if (!settings.enabled || !settings.apiKey.trim())
         throw new Error(`${provider} is not enabled`)
@@ -36,6 +40,6 @@ export async function streamSpeech(provider: TtsProvider, providerVoiceId: strin
     if (provider == 'elevenlabs')
         return await streamElevenLabsSpeech(providerVoiceId, text, settings)
 
-    return await streamInworldSpeech(providerVoiceId, text, settings)
+    return await streamInworldSpeech(providerVoiceId, text, settings, options)
 }
 

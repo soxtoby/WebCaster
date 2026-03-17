@@ -1,6 +1,7 @@
 import { array, object, string, type InferOutput } from "valibot"
 import { fetchJson, fetchResponse } from "../http/request"
 import { type TtsProviderSettings, type VoiceRecord } from "../settings/settings-types"
+import { type StreamSpeechOptions } from "./tts"
 import { detectGenderFromName } from "./tts-utils"
 
 type InworldSpeechResponse = {
@@ -51,13 +52,20 @@ export async function listInworldVoices(settings: TtsProviderSettings): Promise<
         .map(entry => mapInworldVoice(entry))
 }
 
-export async function streamInworldSpeech(providerVoiceId: string, text: string, settings: TtsProviderSettings): Promise<{ stream: ReadableStream<Uint8Array>; mimeType: string }> {
+export async function streamInworldSpeech(providerVoiceId: string, text: string, settings: TtsProviderSettings, options?: StreamSpeechOptions): Promise<{ stream: ReadableStream<Uint8Array>; mimeType: string }> {
     let chunks = splitTextIntoChunks(text)
+    let totalChunks = chunks.length
+
+    options?.onChunkProgress?.({ chunksProcessed: 0, chunksTotal: totalChunks })
 
     let stream = new ReadableStream<Uint8Array>({
         async start(controller) {
             try {
-                for (let chunk of chunks) {
+                for (let index = 0; index < chunks.length; index += 1) {
+                    let chunk = chunks[index]
+                    if (!chunk)
+                        continue
+
                     let chunkStream = await fetchInworldChunkStream(providerVoiceId, chunk, settings)
                     let reader = chunkStream.getReader()
                     try {
@@ -71,6 +79,8 @@ export async function streamInworldSpeech(providerVoiceId: string, text: string,
                     } finally {
                         reader.releaseLock()
                     }
+
+                    options?.onChunkProgress?.({ chunksProcessed: index + 1, chunksTotal: totalChunks })
                 }
                 controller.close()
             } catch (error) {

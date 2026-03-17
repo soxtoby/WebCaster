@@ -18,10 +18,57 @@ type EpisodeView = {
     status: string
     errorMessage: string | null
     voice: string | null
+    progressPercent: number
+    chunksProcessed: number
+    chunksTotal: number
+    progressMode: string
+    estimatedSecondsRemaining: number
     audioReady: boolean
 }
 
+type EpisodeProgress = {
+    progressPercent: number
+    chunksProcessed: number
+    chunksTotal: number
+    progressMode: string
+    estimatedSecondsRemaining: number
+}
+
+let episodeProgress = new Map<string, EpisodeProgress>()
+
 let pollerStarted = false
+
+export async function resetInterruptedEpisodeGeneration() {
+    let interrupted = database
+        .select()
+        .from(articlesTable)
+        .where(eq(articlesTable.status, 'generating'))
+        .all()
+
+    for (let article of interrupted) {
+        let feed = database.select().from(feedsTable).where(eq(feedsTable.id, article.feedId)).get()
+        if (feed) {
+            let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
+            try {
+                await unlink(resolvedPath)
+            }
+            catch {
+            }
+        }
+
+        database
+            .update(articlesTable)
+            .set({
+                status: 'pending',
+                errorMessage: null,
+                updatedAt: sql`CURRENT_TIMESTAMP`
+            })
+            .where(and(eq(articlesTable.feedId, article.feedId), eq(articlesTable.episodeKey, article.episodeKey)))
+            .run()
+
+        clearEpisodeProgress(article.feedId, article.episodeKey)
+    }
+}
 
 export function startFeedPolling() {
     if (pollerStarted)
@@ -69,6 +116,7 @@ export async function listFeedEpisodes(feedId: number): Promise<EpisodeView[]> {
     return await Promise.all(episodes.map(async row => {
         let episodeKey = resolveEpisodeKey(row.episodeKey, row.title, row.sourceUrl)
         let audioReady = await Bun.file(episodePath(feed.podcastSlug, episodeKey)).exists()
+        let progress = getEpisodeProgress(feedId, row.episodeKey)
         return {
             episodeKey,
             title: row.title,
@@ -78,6 +126,11 @@ export async function listFeedEpisodes(feedId: number): Promise<EpisodeView[]> {
             status: row.status,
             errorMessage: row.errorMessage,
             voice: row.voice,
+            progressPercent: progress.progressPercent,
+            chunksProcessed: progress.chunksProcessed,
+            chunksTotal: progress.chunksTotal,
+            progressMode: progress.progressMode,
+            estimatedSecondsRemaining: progress.estimatedSecondsRemaining,
             audioReady
         }
     }))
@@ -113,22 +166,39 @@ export async function streamEpisodeAudio(feed: Feed, episodeKey: string): Promis
     if (await preferredFile.exists())
         return new Response(preferredFile, { headers: { 'content-type': 'audio/mpeg' } })
 
-    let generated: StreamedAudio
+    markArticleGenerating(feed.id, article.episodeKey, feed)
+
+    let generated: GeneratedAudio
     try {
-        generated = await createAudioStream(feed, article)
+        generated = await createAudioStream(feed, article, progress => {
+            updateArticleChunkProgress(feed.id, article.episodeKey, progress.chunksProcessed, progress.chunksTotal)
+        })
     } catch (error) {
         let message = error instanceof Error ? error.message : 'Audio generation failed'
         markArticleFailed(feed.id, article.episodeKey, message)
         return new Response(message, { status: 400 })
     }
 
-    markArticleGenerating(feed.id, article.episodeKey, feed)
-    let [toClient, toDisk] = generated.stream.tee()
+    let [toClient, toDisk] = generated.audio.stream.tee()
+
+    if (generated.provider == 'inworld')
+        updateArticleChunkProgress(feed.id, article.episodeKey, 0, estimateChunkCount(generated.textLength))
+
+    let stopEstimatedProgress = startEstimatedProgressUpdates(
+        feed.id,
+        article.episodeKey,
+        generated.provider,
+        generated.textLength
+    )
+
     void persistAudioStream(toDisk, resolvedPath, article, feed)
+        .finally(() => {
+            stopEstimatedProgress()
+        })
 
     return new Response(toClient, {
         headers: {
-            'content-type': generated.mimeType,
+            'content-type': generated.audio.mimeType,
             'cache-control': 'no-store'
         }
     })
@@ -158,6 +228,8 @@ export async function setEpisodeVoiceOverride(feedId: number, episodeKey: string
         })
         .where(and(eq(articlesTable.feedId, feed.id), eq(articlesTable.episodeKey, article.episodeKey)))
         .run()
+
+    clearEpisodeProgress(feed.id, article.episodeKey)
 
     let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
 
@@ -305,15 +377,38 @@ async function generateAndStoreAudio(feed: Feed, article: Article) {
 
     markArticleGenerating(feed.id, article.episodeKey, feed)
     try {
-        let generated = await createAudioStream(feed, article)
-        await persistAudioStream(generated.stream, resolvedPath, article, feed)
+        let generated = await createAudioStream(feed, article, progress => {
+            updateArticleChunkProgress(feed.id, article.episodeKey, progress.chunksProcessed, progress.chunksTotal)
+        })
+
+        if (generated.provider == 'inworld')
+            updateArticleChunkProgress(feed.id, article.episodeKey, 0, estimateChunkCount(generated.textLength))
+
+        let stopEstimatedProgress = startEstimatedProgressUpdates(
+            feed.id,
+            article.episodeKey,
+            generated.provider,
+            generated.textLength
+        )
+
+        try {
+            await persistAudioStream(generated.audio.stream, resolvedPath, article, feed)
+        } finally {
+            stopEstimatedProgress()
+        }
     } catch (error) {
         let message = error instanceof Error ? error.message : 'Audio generation failed'
         markArticleFailed(feed.id, article.episodeKey, message)
     }
 }
 
-async function createAudioStream(feed: Feed, article: Article): Promise<StreamedAudio> {
+type GeneratedAudio = {
+    audio: StreamedAudio
+    provider: TtsProvider
+    textLength: number
+}
+
+async function createAudioStream(feed: Feed, article: Article, onChunkProgress?: (progress: { chunksProcessed: number; chunksTotal: number }) => void): Promise<GeneratedAudio> {
     let text = await getStoredEpisodeTranscript(feed, article, {
         forceRegenerateTranscript: false,
         refreshFeedArticle: false
@@ -330,7 +425,15 @@ async function createAudioStream(feed: Feed, article: Article): Promise<Streamed
         throw new Error('Selected voice provider is invalid')
 
     let settings = listProviderSettings()
-    return await streamSpeech(voice.provider, voice.providerVoiceId, text, settings)
+    let audio = await streamSpeech(voice.provider, voice.providerVoiceId, text, settings, {
+        onChunkProgress
+    })
+
+    return {
+        audio,
+        provider: voice.provider,
+        textLength: text.length
+    }
 }
 
 function isTtsProvider(value: string): value is TtsProvider {
@@ -415,6 +518,14 @@ function markArticleGenerating(feedId: number, episodeKey: string, feed: Feed) {
         })
         .where(and(eq(articlesTable.feedId, feedId), eq(articlesTable.episodeKey, episodeKey)))
         .run()
+
+    setEpisodeProgress(feedId, episodeKey, {
+        progressPercent: 0,
+        chunksProcessed: 0,
+        chunksTotal: 0,
+        progressMode: 'none',
+        estimatedSecondsRemaining: 0
+    })
 }
 
 function markArticleReady(feedId: number, episodeKey: string, audioUrl: string) {
@@ -428,6 +539,8 @@ function markArticleReady(feedId: number, episodeKey: string, audioUrl: string) 
         })
         .where(and(eq(articlesTable.feedId, feedId), eq(articlesTable.episodeKey, episodeKey)))
         .run()
+
+    clearEpisodeProgress(feedId, episodeKey)
 }
 
 function markArticleFailed(feedId: number, episodeKey: string, reason: string) {
@@ -440,6 +553,96 @@ function markArticleFailed(feedId: number, episodeKey: string, reason: string) {
         })
         .where(and(eq(articlesTable.feedId, feedId), eq(articlesTable.episodeKey, episodeKey)))
         .run()
+
+    clearEpisodeProgress(feedId, episodeKey)
+}
+
+function updateArticleChunkProgress(feedId: number, episodeKey: string, chunksProcessed: number, chunksTotal: number) {
+    if (chunksTotal <= 0)
+        return
+
+    let safeProcessed = Math.max(0, chunksProcessed)
+    let clampedProcessed = Math.min(safeProcessed, chunksTotal)
+    let rawPercent = Math.floor((clampedProcessed / chunksTotal) * 100)
+    let progressPercent = clampedProcessed >= chunksTotal ? 99 : Math.max(1, rawPercent)
+
+    setEpisodeProgress(feedId, episodeKey, {
+        progressPercent,
+        chunksProcessed: clampedProcessed,
+        chunksTotal,
+        progressMode: 'chunk',
+        estimatedSecondsRemaining: 0
+    })
+}
+
+function startEstimatedProgressUpdates(feedId: number, episodeKey: string, provider: TtsProvider, textLength: number) {
+    if (provider == 'inworld')
+        return () => { }
+
+    let estimatedDurationSeconds = estimateProviderDurationSeconds(provider, textLength)
+    let startedAt = Date.now()
+
+    updateArticleEstimatedProgress(feedId, episodeKey, startedAt, estimatedDurationSeconds)
+
+    let timer = setInterval(() => {
+        updateArticleEstimatedProgress(feedId, episodeKey, startedAt, estimatedDurationSeconds)
+    }, 1000)
+
+    return () => {
+        clearInterval(timer)
+    }
+}
+
+function updateArticleEstimatedProgress(feedId: number, episodeKey: string, startedAtMs: number, estimatedDurationSeconds: number) {
+    let elapsedSeconds = Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000))
+    let ratio = estimatedDurationSeconds > 0 ? elapsedSeconds / estimatedDurationSeconds : 0
+    let progressPercent = Math.min(95, Math.max(1, Math.floor(ratio * 100)))
+    let estimatedSecondsRemaining = Math.max(0, Math.ceil(estimatedDurationSeconds - elapsedSeconds))
+
+    setEpisodeProgress(feedId, episodeKey, {
+        progressPercent,
+        progressMode: 'estimated',
+        estimatedSecondsRemaining,
+        chunksProcessed: 0,
+        chunksTotal: 0
+    })
+}
+
+function estimateProviderDurationSeconds(provider: TtsProvider, textLength: number) {
+    let charsPerSecond = provider == 'openai' || provider == 'lemonfox'
+        ? 34
+        : provider == 'elevenlabs'
+            ? 28
+            : 22
+
+    let estimated = Math.ceil(textLength / charsPerSecond)
+    return Math.max(8, estimated)
+}
+
+function estimateChunkCount(textLength: number) {
+    return Math.max(1, Math.ceil(textLength / 2000))
+}
+
+function buildEpisodeProgressKey(feedId: number, episodeKey: string) {
+    return `${feedId}:${episodeKey}`
+}
+
+function getEpisodeProgress(feedId: number, episodeKey: string): EpisodeProgress {
+    return episodeProgress.get(buildEpisodeProgressKey(feedId, episodeKey)) || {
+        progressPercent: 0,
+        chunksProcessed: 0,
+        chunksTotal: 0,
+        progressMode: 'none',
+        estimatedSecondsRemaining: 0
+    }
+}
+
+function setEpisodeProgress(feedId: number, episodeKey: string, progress: EpisodeProgress) {
+    episodeProgress.set(buildEpisodeProgressKey(feedId, episodeKey), progress)
+}
+
+function clearEpisodeProgress(feedId: number, episodeKey: string) {
+    episodeProgress.delete(buildEpisodeProgressKey(feedId, episodeKey))
 }
 
 async function resolveArticleText(feed: Feed, article: Article, options: { forceRegenerateImageDescriptions: boolean }) {

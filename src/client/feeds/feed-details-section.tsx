@@ -22,6 +22,11 @@ type Episode = {
     audioReady: boolean
     audioUrl: string
     voice: string | null
+    progressPercent: number
+    chunksProcessed: number
+    chunksTotal: number
+    progressMode: string
+    estimatedSecondsRemaining: number
 }
 
 export function FeedDetailsSection(props: {
@@ -196,9 +201,21 @@ export function FeedDetailsSection(props: {
                                                 {dateStr}
                                             </td>
                                             <td className={classes(tdStyle)}>
-                                                <span className={classes([statusBadgeStyle, episode.status === 'completed' && completedBadgeStyle])}>
-                                                    {episode.status.replace('_', ' ')}
-                                                </span>
+                                                {episode.status == 'generating'
+                                                    ? <div className={classes(progressStatusStyle)}>
+                                                        <div className={classes(progressTrackStyle)}>
+                                                            <div
+                                                                className={classes(progressFillStyle)}
+                                                                style={{ width: `${Math.min(100, Math.max(0, episode.progressPercent))}%` }}
+                                                            />
+                                                        </div>
+                                                        <div className={classes(progressMetaStyle)}>
+                                                            {buildEpisodeProgressLabel(episode)}
+                                                        </div>
+                                                    </div>
+                                                    : <span className={classes([statusBadgeStyle, episode.status === 'ready' && completedBadgeStyle])}>
+                                                        {episode.status.replace('_', ' ')}
+                                                    </span>}
                                             </td>
                                             <td className={classes([tdStyle, tdVoiceStyle])}>
                                                 <button
@@ -331,6 +348,37 @@ function buildEpisodeVoiceAriaLabel(options: VoiceOption[], selectedVoiceId: str
         return 'Choose episode voice (currently saved voice)'
 
     return `Choose episode voice (currently ${selected.name})`
+}
+
+function buildEpisodeProgressLabel(episode: Episode) {
+    let progressPercent = Math.min(100, Math.max(0, episode.progressPercent || 0))
+
+    if (episode.progressMode == 'chunk' && episode.chunksTotal > 0)
+        return `${progressPercent}% · Chunk ${Math.min(episode.chunksProcessed, episode.chunksTotal)}/${episode.chunksTotal}`
+
+    if (episode.progressMode == 'estimated') {
+        let remaining = formatSeconds(episode.estimatedSecondsRemaining)
+        if (remaining)
+            return `${progressPercent}% · ${remaining} left (est.)`
+        return `${progressPercent}% (est.)`
+    }
+
+    return `${progressPercent}%`
+}
+
+function formatSeconds(value: number) {
+    if (!Number.isFinite(value) || value <= 0)
+        return ''
+
+    let minutes = Math.floor(value / 60)
+    let seconds = value % 60
+    if (minutes <= 0)
+        return `${seconds}s`
+
+    if (seconds == 0)
+        return `${minutes}m`
+
+    return `${minutes}m ${seconds}s`
 }
 
 function Field(props: {
@@ -566,7 +614,7 @@ let thDateStyle = style('thDate', {
 })
 
 let thStatusStyle = style('thStatus', {
-    width: 130
+    width: 180
 })
 
 let thVoiceStyle = style('thVoice', {
@@ -723,6 +771,38 @@ let statusBadgeStyle = style('statusBadge', {
 let completedBadgeStyle = style('completedBadge', {
     backgroundColor: 'color-mix(in srgb, #10b981 15%, transparent)',
     color: '#10b981'
+})
+
+let progressStatusStyle = style('progressStatus', {
+    width: '100%',
+    minWidth: 120,
+    maxWidth: 170,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 5
+})
+
+let progressTrackStyle = style('progressTrack', {
+    width: '100%',
+    height: 6,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: 'color-mix(in srgb, var(--muted) 20%, transparent)'
+})
+
+let progressFillStyle = style('progressFill', {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: 'var(--accent)',
+    transition: 'width 0.3s ease'
+})
+
+let progressMetaStyle = style('progressMeta', {
+    fontSize: 11,
+    color: 'var(--muted)',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis'
 })
 
 let playButtonStyle = style('playButton', {

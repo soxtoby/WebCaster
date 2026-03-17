@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Added
+- Estimated progress for episodes currently being generated.
+
+## V1.0.3
+
+### Added
 - Can manually edit an episode's transcript.
 
 ## V1.0.2
