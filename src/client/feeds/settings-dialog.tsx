@@ -2,6 +2,7 @@ import type { inferRouterOutputs } from "@trpc/server"
 import { type ChangeEvent, useEffect, useRef, useState } from "react"
 import { classes, style } from "stylemap"
 import type { AppRouter } from "../../server/trpc/app-router"
+import { defaultImageDescriptionProviderSettings } from "../../shared/image-description-defaults"
 import { api } from "../api"
 
 export type ProviderSettingsDraft = {
@@ -53,23 +54,14 @@ type SavedSettingsSnapshot = {
 type RouterOutputs = inferRouterOutputs<AppRouter>
 type SettingsResponse = RouterOutputs['settings']['get']
 
-let defaultImageDescriptionPrompt =
-    `Write an audio description script for this image, intended for listeners who cannot see it. Focus on visible details only.`
-
 let imageDescriptionProviderDefaults = {
     openai: {
         label: 'OpenAI',
-        apiKey: '',
-        baseUrl: 'https://api.openai.com/v1',
-        model: 'gpt-5-mini',
-        prompt: defaultImageDescriptionPrompt
+        ...defaultImageDescriptionProviderSettings.openai
     },
     gemini: {
         label: 'Google Gemini',
-        apiKey: '',
-        baseUrl: 'https://generativelanguage.googleapis.com',
-        model: 'gemini-3.1-flash-lite-preview',
-        prompt: defaultImageDescriptionPrompt
+        ...defaultImageDescriptionProviderSettings.gemini
     }
 } as const
 

@@ -1,5 +1,6 @@
 import { hostname as osHostname } from "os"
 import { boolean, check, number, object, optional, picklist, pipe, string, trim, type InferOutput } from "valibot"
+import { defaultImageDescriptionProviderSettings as sharedDefaultImageDescriptionProviderSettings } from "../../shared/image-description-defaults"
 
 export let ttsProviders = ['inworld', 'openai', 'elevenlabs', 'lemonfox'] as const
 export type TtsProvider = (typeof ttsProviders)[number]
@@ -52,20 +53,12 @@ export let defaultServerSettings = {
     passwordConfigured: false
 } as const satisfies ServerSettings
 
-let defaultImageDescriptionPrompt = 'Write an audio description script for this image, intended for listeners who cannot see it. Focus on visible details only.'
-
 export let defaultImageDescriptionProviderSettings = {
     openai: {
-        apiKey: '',
-        baseUrl: 'https://api.openai.com/v1',
-        model: 'gpt-4.1-mini',
-        prompt: defaultImageDescriptionPrompt
+        ...sharedDefaultImageDescriptionProviderSettings.openai
     },
     gemini: {
-        apiKey: '',
-        baseUrl: 'https://generativelanguage.googleapis.com',
-        model: 'gemini-3.1-flash-lite-preview',
-        prompt: defaultImageDescriptionPrompt
+        ...sharedDefaultImageDescriptionProviderSettings.gemini
     }
 } as const satisfies ImageDescriptionProviderState
 
