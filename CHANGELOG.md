@@ -2,8 +2,11 @@
 
 ## Unreleased
 
+### V1.0.4
+
 ### Added
 - Estimated progress for episodes currently being generated.
+- Improved image descriptions with transition phrases and longer output.
 
 ## V1.0.3
 

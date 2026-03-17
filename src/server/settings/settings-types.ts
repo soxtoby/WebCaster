@@ -52,7 +52,7 @@ export let defaultServerSettings = {
     passwordConfigured: false
 } as const satisfies ServerSettings
 
-let defaultImageDescriptionPrompt = 'Describe this image briefly and factually for podcast narration. Focus on visible details only.'
+let defaultImageDescriptionPrompt = 'Write an audio description script for this image, intended for listeners who cannot see it. Focus on visible details only.'
 
 export let defaultImageDescriptionProviderSettings = {
     openai: {
@@ -64,7 +64,7 @@ export let defaultImageDescriptionProviderSettings = {
     gemini: {
         apiKey: '',
         baseUrl: 'https://generativelanguage.googleapis.com',
-        model: 'gemini-2.0-flash',
+        model: 'gemini-3.1-flash-lite-preview',
         prompt: defaultImageDescriptionPrompt
     }
 } as const satisfies ImageDescriptionProviderState

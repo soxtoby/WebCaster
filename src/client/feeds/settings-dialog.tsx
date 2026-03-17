@@ -54,10 +54,7 @@ type RouterOutputs = inferRouterOutputs<AppRouter>
 type SettingsResponse = RouterOutputs['settings']['get']
 
 let defaultImageDescriptionPrompt =
-    `Describe this image briefly and factually for a listener who cannot see it.
-    Focus on visible details only. 
-    Begin with a natural transition phrase to indicate there's an image in the article, e.g. "There's an image here" or "The article has an image".
-    End with a natural transition phrase to indicate the podcast is returning to the article, e.g. "Returning to the article..." or "Back to the article...".`
+    `Write an audio description script for this image, intended for listeners who cannot see it. Focus on visible details only.`
 
 let imageDescriptionProviderDefaults = {
     openai: {
