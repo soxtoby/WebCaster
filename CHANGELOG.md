@@ -10,6 +10,9 @@
 ### Added
 - Can manually edit an episode's transcript.
 
+### Fixed
+- Database upgrade scripts load properly from compiled exe.
+
 ## V1.0.2
 
 ### Added
