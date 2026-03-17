@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-### V1.0.4
+## V1.0.4
 
 ### Added
 - Estimated progress for episodes currently being generated.
