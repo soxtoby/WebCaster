@@ -18,7 +18,7 @@ export function restartServer(hostname: string, port: number) {
 
 export function startServer(hostname: string, port: number) {
     server ??= serve({
-        development: true,
+        development: process.env.NODE_ENV !== 'production',
         hostname,
         port,
         routes: {
