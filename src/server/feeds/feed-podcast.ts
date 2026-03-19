@@ -315,28 +315,44 @@ async function syncAllFeeds(limit: number) {
         await syncFeed(feed, limit)
 }
 
-export function insertFeedArticles(feedId: number, generationMode: string, contentSource: string, articles: ParsedFeedArticle[], limit = 20) {
+export async function insertFeedArticles(feedId: number, generationMode: string, contentSource: string, articles: ParsedFeedArticle[], limit = 20) {
     let items = articles.slice(0, limit)
     for (let item of items) {
-        let episodeKey = buildEpisodeRouteKey(item.title, item.sourceUrl)
+        let prepared = await prepareParsedFeedArticleForStorage(item, {
+            forceRegenerateImageDescriptions: false
+        })
+        let episodeKey = buildEpisodeRouteKey(prepared.title, prepared.sourceUrl)
         database
             .insert(articlesTable)
             .values({
                 feedId,
                 episodeKey,
-                guid: item.guid,
-                sourceUrl: item.sourceUrl,
-                title: item.title,
-                summary: item.summary,
-                content: item.content,
+                guid: prepared.guid,
+                sourceUrl: prepared.sourceUrl,
+                title: prepared.title,
+                summary: prepared.summary,
+                content: prepared.content,
                 voice: null,
                 status: 'pending',
                 generationMode,
                 contentSource,
-                publishedAt: item.publishedAt,
+                publishedAt: prepared.publishedAt,
                 updatedAt: sql`CURRENT_TIMESTAMP`
             })
-            .onConflictDoNothing({ target: [articlesTable.feedId, articlesTable.sourceUrl] })
+            .onConflictDoUpdate({
+                target: [articlesTable.feedId, articlesTable.sourceUrl],
+                set: {
+                    episodeKey,
+                    guid: prepared.guid,
+                    title: prepared.title,
+                    summary: prepared.summary,
+                    content: prepared.content,
+                    generationMode,
+                    contentSource,
+                    publishedAt: prepared.publishedAt,
+                    updatedAt: sql`CURRENT_TIMESTAMP`
+                }
+            })
             .run()
     }
 }
@@ -346,7 +362,7 @@ async function syncFeed(feed: Feed, limit: number) {
     if (!parsed)
         return
 
-    insertFeedArticles(feed.id, feed.generationMode, feed.contentSource, parsed.articles, limit)
+    await insertFeedArticles(feed.id, feed.generationMode, feed.contentSource, parsed.articles, limit)
 
     if (feed.generationMode == 'every_episode') {
         let pending = database
@@ -649,8 +665,7 @@ async function resolveArticleText(feed: Feed, article: Article, options: { force
     if (feed.contentSource == 'source_page')
         return await readSourcePage(article.sourceUrl, article, options)
 
-    let preparedContent = await prepareNarrationText(article.content || '', article.sourceUrl, options)
-        || await prepareNarrationText((article.summary || ''), article.sourceUrl, options)
+    let preparedContent = normalizeStoredFeedText(article.content || article.summary || '')
 
     return [decodeTranscriptText(article.title), preparedContent].join('\n\n').trim()
 }
@@ -719,6 +734,10 @@ async function prepareNarrationText(value: string, sourceUrl: string, options: {
     return normalizeTranscriptText(decodeTranscriptText(text))
 }
 
+function normalizeStoredFeedText(value: string) {
+    return normalizeTranscriptText(decodeTranscriptText(value))
+}
+
 function normalizeTranscriptText(value: string) {
     return value
         .replace(/\r\n?/g, '\n')
@@ -771,24 +790,28 @@ async function refreshStoredArticleFromFeed(feed: Feed, article: Article) {
     if (!refreshed)
         return article
 
+    let prepared = await prepareParsedFeedArticleForStorage(refreshed, {
+        forceRegenerateImageDescriptions: true
+    })
+
     let nextArticle: Article = {
         ...article,
-        title: refreshed.title,
-        summary: refreshed.summary,
-        content: refreshed.content,
-        guid: refreshed.guid,
-        publishedAt: refreshed.publishedAt,
+        title: prepared.title,
+        summary: prepared.summary,
+        content: prepared.content,
+        guid: prepared.guid,
+        publishedAt: prepared.publishedAt,
         updatedAt: new Date().toISOString()
     }
 
     database
         .update(articlesTable)
         .set({
-            title: refreshed.title,
-            summary: refreshed.summary,
-            content: refreshed.content,
-            guid: refreshed.guid,
-            publishedAt: refreshed.publishedAt,
+            title: prepared.title,
+            summary: prepared.summary,
+            content: prepared.content,
+            guid: prepared.guid,
+            publishedAt: prepared.publishedAt,
             updatedAt: sql`CURRENT_TIMESTAMP`
         })
         .where(and(eq(articlesTable.feedId, article.feedId), eq(articlesTable.sourceUrl, article.sourceUrl)))
@@ -805,6 +828,19 @@ function articleMatchesParsedArticle(article: Article, parsedArticle: ParsedFeed
         return parsedArticle.guid == article.guid
 
     return false
+}
+
+async function prepareParsedFeedArticleForStorage(article: ParsedFeedArticle, options: { forceRegenerateImageDescriptions: boolean }) {
+    let title = normalizeStoredFeedText(article.title)
+    let summary = normalizeStoredFeedText(article.summary || '') || null
+    let content = await prepareNarrationText(article.content || '', article.sourceUrl, options)
+
+    return {
+        ...article,
+        title: title || article.title,
+        summary,
+        content: content || null,
+    }
 }
 
 function ensureStoredEpisodeKey(article: Article, episodeKey: string) {
@@ -832,10 +868,77 @@ async function buildRssItem(feed: Feed, article: Article) {
     let enclosureLength = await getEnclosureLength(feed, article)
     let guid = article.sourceUrl || article.guid || enclosureUrl
     let published = article.publishedAt ? `<pubDate>${new Date(article.publishedAt).toUTCString()}</pubDate>` : ''
-    let description = escapeXml(article.summary || '')
+    let description = escapeXml(buildEpisodeDescription(article))
     let title = escapeXml(article.title)
 
     return `<item><title>${title}</title><guid isPermaLink="false">${escapeXml(guid)}</guid><link>${escapeXml(article.sourceUrl)}</link><description>${description}</description><enclosure url="${escapeXml(enclosureUrl)}" length="${enclosureLength}" type="audio/mpeg"/>${published}</item>`
+}
+
+function buildEpisodeDescription(article: Article) {
+    let sourceLine = `Original article: ${article.sourceUrl}`
+    let summary = normalizeDescriptionPreview(article.summary || '')
+    let excerpt = isReasonableDescriptionSize(summary)
+        ? summary
+        : buildArticleExcerpt(article)
+
+    if (excerpt)
+        return `${sourceLine}\n\n${excerpt}`
+
+    return sourceLine
+}
+
+function buildArticleExcerpt(article: Article) {
+    let paragraphs = extractDescriptionParagraphs(article.content || article.transcript || article.summary || '')
+    if (paragraphs.length == 0)
+        return truncateDescriptionPreview(normalizeDescriptionPreview(article.summary || ''), 900)
+
+    let excerpt = paragraphs[0] || ''
+    let nextParagraph = paragraphs[1]
+    if (excerpt.length < 220 && nextParagraph)
+        excerpt = `${excerpt}\n\n${nextParagraph}`
+
+    return truncateDescriptionPreview(excerpt, 900)
+}
+
+function extractDescriptionParagraphs(value: string) {
+    let normalized = normalizeDescriptionPreview(value)
+    if (!normalized)
+        return []
+
+    return normalized
+        .split(/\n{2,}/)
+        .map(part => part.trim())
+        .filter(Boolean)
+}
+
+function normalizeDescriptionPreview(value: string) {
+    return decodeTranscriptText(value)
+        .replace(/\r\n?/g, '\n')
+        .replace(/[ \t\f\v]+\n/g, '\n')
+        .replace(/\n[ \t\f\v]+/g, '\n')
+        .replace(/[ \t\f\v]+/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim()
+}
+
+function isReasonableDescriptionSize(value: string) {
+    return value.length >= 120 && value.length <= 1200
+}
+
+function truncateDescriptionPreview(value: string, maxLength: number) {
+    if (value.length <= maxLength)
+        return value
+
+    let candidate = value.slice(0, maxLength)
+    let sentenceBreak = Math.max(candidate.lastIndexOf('. '), candidate.lastIndexOf('! '), candidate.lastIndexOf('? '))
+    if (sentenceBreak >= Math.floor(maxLength * 0.6))
+        return candidate.slice(0, sentenceBreak + 1).trim()
+
+    let wordBreak = candidate.lastIndexOf(' ')
+    if (wordBreak >= Math.floor(maxLength * 0.6))
+        return candidate.slice(0, wordBreak).trim() + '...'
+
+    return candidate.trim() + '...'
 }
 
 async function getEnclosureLength(feed: Feed, article: Pick<Article, 'episodeKey' | 'title' | 'sourceUrl'>) {

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- Better episode description with link to source article.
+
 ## V1.0.4
 
 ### Added
