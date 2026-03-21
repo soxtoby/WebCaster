@@ -3,7 +3,7 @@ import { mkdir, unlink } from "node:fs/promises"
 import { database } from "../db"
 import { articlesTable, feedsTable, type Article, type Feed } from "../db/schema"
 import { episodePath, podcastDirectory } from "../paths"
-import { getCachedVoiceById, getServerBaseUrl, listProviderSettings } from "../settings/settings-repository"
+import { getCachedVoiceById, getEpisodeGenerationSettings, getServerBaseUrl, listProviderSettings } from "../settings/settings-repository"
 import { type TtsProvider } from "../settings/settings-types"
 import { streamSpeech, type StreamedAudio } from "../tts/tts"
 import { fetchFeed, type ParsedFeedArticle } from "./feed-parsing"
@@ -46,7 +46,7 @@ type EpisodeGenerationJob = {
 let episodeProgress = new Map<string, EpisodeProgress>()
 let episodeGenerationJobs = new Map<string, EpisodeGenerationJob>()
 let queuedEpisodeJobKeys: string[] = []
-let activeEpisodeJobKey: string | null = null
+let activeEpisodeJobKeys = new Set<string>()
 let queuedEpisodeCancelledMessage = 'Episode generation was cancelled'
 
 let pollerStarted = false
@@ -92,6 +92,10 @@ export function startFeedPolling() {
     setInterval(() => {
         void syncAllFeeds(20)
     }, 10 * 60 * 1000)
+}
+
+export function resumeQueuedEpisodeGeneration() {
+    startAvailableEpisodeGenerationJobs()
 }
 
 export async function syncFeedById(feedId: number, limit = 20) {
@@ -418,7 +422,7 @@ async function scheduleEpisodeGeneration(feed: Feed, article: Article) {
 
     episodeGenerationJobs.set(jobKey, job)
 
-    if (activeEpisodeJobKey == null) {
+    if (hasEpisodeGenerationCapacity()) {
         startEpisodeGenerationJob(job)
     } else {
         queuedEpisodeJobKeys.push(job.key)
@@ -429,7 +433,7 @@ async function scheduleEpisodeGeneration(feed: Feed, article: Article) {
 }
 
 function startEpisodeGenerationJob(job: EpisodeGenerationJob) {
-    activeEpisodeJobKey = job.key
+    activeEpisodeJobKeys.add(job.key)
     queuedEpisodeJobKeys = queuedEpisodeJobKeys.filter(key => key != job.key)
     void runEpisodeGenerationJob(job)
 }
@@ -491,21 +495,28 @@ async function runEpisodeGenerationJob(job: EpisodeGenerationJob) {
 
 function finishEpisodeGenerationJob(jobKey: string) {
     episodeGenerationJobs.delete(jobKey)
-
-    if (activeEpisodeJobKey == jobKey)
-        activeEpisodeJobKey = null
+    activeEpisodeJobKeys.delete(jobKey)
 
     queuedEpisodeJobKeys = queuedEpisodeJobKeys.filter(key => key != jobKey)
 
-    let nextJobKey = queuedEpisodeJobKeys.shift()!
-    let nextJob = episodeGenerationJobs.get(nextJobKey)
-    if (nextJob)
-        startEpisodeGenerationJob(nextJob)
+    startAvailableEpisodeGenerationJobs()
+}
+
+function startAvailableEpisodeGenerationJobs() {
+    while (hasEpisodeGenerationCapacity() && queuedEpisodeJobKeys.length > 0) {
+        let nextJobKey = queuedEpisodeJobKeys.shift()
+        if (!nextJobKey)
+            return
+
+        let nextJob = episodeGenerationJobs.get(nextJobKey)
+        if (nextJob)
+            startEpisodeGenerationJob(nextJob)
+    }
 }
 
 function cancelQueuedEpisodeGeneration(feedId: number, episodeKey: string) {
     let jobKey = buildEpisodeProgressKey(feedId, episodeKey)
-    if (activeEpisodeJobKey == jobKey)
+    if (activeEpisodeJobKeys.has(jobKey))
         return
 
     let queuedJob = episodeGenerationJobs.get(jobKey)
@@ -519,6 +530,10 @@ function cancelQueuedEpisodeGeneration(feedId: number, episodeKey: string) {
 
 function isCancelledEpisodeGenerationError(error: unknown) {
     return error instanceof Error && error.message == queuedEpisodeCancelledMessage
+}
+
+function hasEpisodeGenerationCapacity() {
+    return activeEpisodeJobKeys.size < getEpisodeGenerationSettings().concurrentGenerations
 }
 
 type GeneratedAudio = {

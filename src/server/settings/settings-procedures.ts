@@ -1,13 +1,15 @@
 import { updatePassword } from "../auth/auth"
+import { resumeQueuedEpisodeGeneration } from "../feeds/feed-podcast"
 import { restartServer } from "../serve"
 import { procedure } from "../trpc/trpc"
-import { getServerBaseUrl, getServerSettings, listImageDescriptionSettings, listProviderSettings, saveImageDescriptionSettings, saveProviderSettings, saveServerSettings } from "./settings-repository"
+import { getEpisodeGenerationSettings, getServerBaseUrl, getServerSettings, listImageDescriptionSettings, listProviderSettings, saveEpisodeGenerationSettings, saveImageDescriptionSettings, saveProviderSettings, saveServerSettings } from "./settings-repository"
 import { SettingsInput } from "./settings-types"
 
 export const get = procedure
     .query(() => ({
         settings: listProviderSettings(),
         imageDescription: listImageDescriptionSettings(),
+        episodeGeneration: getEpisodeGenerationSettings(),
         server: getServerSettings()
     }))
 
@@ -16,6 +18,8 @@ export const save = procedure
     .mutation(({ input }) => {
         saveProviderSettings(input.settings)
         saveImageDescriptionSettings(input.imageDescription)
+        saveEpisodeGenerationSettings(input.episodeGeneration)
+        resumeQueuedEpisodeGeneration()
 
         if (input.server.password)
             updatePassword(input.server.password)
@@ -45,6 +49,7 @@ export const save = procedure
         return {
             settings: listProviderSettings(),
             imageDescription: listImageDescriptionSettings(),
+            episodeGeneration: getEpisodeGenerationSettings(),
             server: getServerSettings(),
             redirectUrl
         }

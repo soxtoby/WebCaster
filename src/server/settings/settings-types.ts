@@ -29,6 +29,10 @@ export type ImageDescriptionSettings = {
     providers: ImageDescriptionProviderState
 }
 
+export type EpisodeGenerationSettings = {
+    concurrentGenerations: number
+}
+
 export type SettingsState = Record<TtsProvider, TtsProviderSettings>
 
 let ProviderSettingsInput = object({
@@ -71,6 +75,10 @@ export let defaultImageDescriptionSettings = {
     }
 } as const satisfies ImageDescriptionSettings
 
+export let defaultEpisodeGenerationSettings = {
+    concurrentGenerations: 1
+} as const satisfies EpisodeGenerationSettings
+
 let ImageDescriptionProviderSettingsInput = object({
     apiKey: pipe(string(), trim()),
     baseUrl: pipe(string(), trim()),
@@ -87,6 +95,16 @@ let ImageDescriptionSettingsInput = object({
     })
 })
 
+let EpisodeGenerationSettingsInput = object({
+    concurrentGenerations: pipe(
+        number('Concurrent episode generations must be a number'),
+        check(
+            value => Number.isInteger(value) && value >= 1 && value <= 20,
+            'Concurrent episode generations must be between 1 and 20'
+        )
+    )
+})
+
 export type SettingsInput = InferOutput<typeof SettingsInput>
 export const SettingsInput = object({
     settings: object({
@@ -96,6 +114,7 @@ export const SettingsInput = object({
         lemonfox: ProviderSettingsInput
     }),
     imageDescription: ImageDescriptionSettingsInput,
+    episodeGeneration: EpisodeGenerationSettingsInput,
     server: object({
         protocol: picklist(['http', 'https']),
         hostname: pipe(string(), trim()),

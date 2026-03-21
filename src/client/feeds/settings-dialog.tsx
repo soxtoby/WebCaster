@@ -43,12 +43,17 @@ export type ImageDescriptionSettingsDraft = {
     }
 }
 
+export type EpisodeGenerationSettingsDraft = {
+    concurrentGenerations: string
+}
+
 type ActiveTab = 'server' | 'imageDescription' | keyof TtsSettingsDraft
 
 type SavedSettingsSnapshot = {
     draft: TtsSettingsDraft
     serverDraft: ServerSettingsDraft
     imageDescriptionDraft: ImageDescriptionSettingsDraft
+    episodeGenerationDraft: EpisodeGenerationSettingsDraft
 }
 
 type RouterOutputs = inferRouterOutputs<AppRouter>
@@ -79,6 +84,7 @@ export function SettingsDialog(props: {
     let [draft, setDraft] = useState<TtsSettingsDraft>(createDefaultSettingsDraft())
     let [serverDraft, setServerDraft] = useState<ServerSettingsDraft>(createDefaultServerDraft())
     let [imageDescriptionDraft, setImageDescriptionDraft] = useState<ImageDescriptionSettingsDraft>(createDefaultImageDescriptionDraft())
+    let [episodeGenerationDraft, setEpisodeGenerationDraft] = useState<EpisodeGenerationSettingsDraft>(createDefaultEpisodeGenerationDraft())
 
     useEffect(() => {
         void loadSettings()
@@ -154,6 +160,8 @@ export function SettingsDialog(props: {
                     ? <ServerPanel
                         value={serverDraft}
                         onChange={onServerDraftChange}
+                        episodeGenerationValue={episodeGenerationDraft}
+                        onEpisodeGenerationChange={onEpisodeGenerationDraftChange}
                     />
                     : activeTab == 'imageDescription'
                         ? <ImageDescriptionPanel
@@ -214,6 +222,12 @@ export function SettingsDialog(props: {
             return
         }
 
+        let concurrentGenerations = parseInt(episodeGenerationDraft.concurrentGenerations, 10)
+        if (!Number.isInteger(concurrentGenerations) || concurrentGenerations < 1 || concurrentGenerations > 20) {
+            setError('Concurrent episode generations must be between 1 and 20')
+            return
+        }
+
         let portNum = parseInt(serverDraft.port, 10)
         if (!portNum || portNum < 1 || portNum > 65535) {
             setError('Port must be between 1 and 65535')
@@ -238,6 +252,9 @@ export function SettingsDialog(props: {
                         openai: sanitizeImageDescriptionProviderDraft(imageDescriptionDraft.providers.openai),
                         gemini: sanitizeImageDescriptionProviderDraft(imageDescriptionDraft.providers.gemini)
                     }
+                },
+                episodeGeneration: {
+                    concurrentGenerations
                 },
                 server: {
                     protocol: parsedAddress.protocol,
@@ -325,6 +342,10 @@ export function SettingsDialog(props: {
         }))
     }
 
+    function onEpisodeGenerationDraftChange(field: keyof EpisodeGenerationSettingsDraft, value: string) {
+        setEpisodeGenerationDraft(current => ({ ...current, [field]: value }))
+    }
+
     function resetToSavedSettings() {
         applySavedSettingsSnapshot(savedSnapshotRef.current)
         setActiveTab('server')
@@ -337,6 +358,7 @@ export function SettingsDialog(props: {
         setDraft(nextSnapshot.draft)
         setServerDraft(nextSnapshot.serverDraft)
         setImageDescriptionDraft(nextSnapshot.imageDescriptionDraft)
+        setEpisodeGenerationDraft(nextSnapshot.episodeGenerationDraft)
     }
 }
 
@@ -397,11 +419,18 @@ function createDefaultImageDescriptionDraft(): ImageDescriptionSettingsDraft {
     }
 }
 
+function createDefaultEpisodeGenerationDraft(): EpisodeGenerationSettingsDraft {
+    return {
+        concurrentGenerations: '1'
+    }
+}
+
 function createDefaultSavedSettingsSnapshot(): SavedSettingsSnapshot {
     return {
         draft: createDefaultSettingsDraft(),
         serverDraft: createDefaultServerDraft(),
-        imageDescriptionDraft: createDefaultImageDescriptionDraft()
+        imageDescriptionDraft: createDefaultImageDescriptionDraft(),
+        episodeGenerationDraft: createDefaultEpisodeGenerationDraft()
     }
 }
 
@@ -423,6 +452,9 @@ function createSavedSettingsSnapshotFromResponse(response: SettingsResponse): Sa
             password: '',
             passwordConfigured: response.server.passwordConfigured,
             protocol: response.server.protocol
+        },
+        episodeGenerationDraft: {
+            concurrentGenerations: String(response.episodeGeneration.concurrentGenerations)
         }
     })
 }
@@ -639,6 +671,8 @@ function sanitizeImageDescriptionProviderDraft(settings: ImageDescriptionProvide
 function ServerPanel(props: {
     value: ServerSettingsDraft
     onChange: (field: keyof ServerSettingsDraft, value: string | boolean) => void
+    episodeGenerationValue: EpisodeGenerationSettingsDraft
+    onEpisodeGenerationChange: (field: keyof EpisodeGenerationSettingsDraft, value: string) => void
 }) {
     return <div className={classes(panelContainerStyle)}>
         <div className={classes(panelHeaderStyle)}>
@@ -700,7 +734,21 @@ function ServerPanel(props: {
             </label>
             <span className={classes(hintStyle)}>When off, the server only accepts connections to the address above</span>
 
-            <span className={classes(hintStyle)}>Changing these settings will restart the server</span>
+            <span className={classes(hintStyle)}>Changing address, port, or listen mode will restart the server</span>
+
+            <label className={classes(fieldGroupStyle)}>
+                <span className={classes(labelStyle)}>Concurrent episode generation</span>
+                <input
+                    className={classes(inputStyle)}
+                    type="number"
+                    min="1"
+                    max="20"
+                    value={props.episodeGenerationValue.concurrentGenerations}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => props.onEpisodeGenerationChange('concurrentGenerations', event.target.value)}
+                    placeholder="1"
+                />
+                <span className={classes(hintStyle)}>How many episodes can be generated at the same time.</span>
+            </label>
         </div>
     </div>
 }

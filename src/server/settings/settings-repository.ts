@@ -5,7 +5,7 @@ import { elevenLabsDefaults } from "../tts/elevenlabs"
 import { inworldDefaults } from "../tts/inworld"
 import { lemonFoxDefaults } from "../tts/lemonfox"
 import { openAiDefaults } from "../tts/openai"
-import { defaultImageDescriptionProviderSettings, defaultImageDescriptionSettings, defaultServerSettings, imageDescriptionProviders, ttsProviders, type ImageDescriptionProvider, type ImageDescriptionProviderState, type ImageDescriptionSettings, type ServerSettings, type SettingsState, type TtsProvider, type VoiceRecord } from "./settings-types"
+import { defaultEpisodeGenerationSettings, defaultImageDescriptionProviderSettings, defaultImageDescriptionSettings, defaultServerSettings, imageDescriptionProviders, ttsProviders, type EpisodeGenerationSettings, type ImageDescriptionProvider, type ImageDescriptionProviderState, type ImageDescriptionSettings, type ServerSettings, type SettingsState, type TtsProvider, type VoiceRecord } from "./settings-types"
 
 export function listProviderSettings(): SettingsState {
     let rows = database.select().from(ttsProviderSettingsTable).all()
@@ -49,8 +49,7 @@ export function saveProviderSettings(settings: SettingsState) {
 }
 
 export function listImageDescriptionSettings(): ImageDescriptionSettings {
-    let rows = database.select().from(appSettingsTable).all()
-    let map = new Map(rows.map(r => [r.key, r.value]))
+    let map = getAppSettingsMap()
     let defaults = createDefaultImageDescriptionSettings()
 
     let provider = map.get('imageDescription.provider') || defaultImageDescriptionSettings.provider
@@ -78,6 +77,23 @@ export function saveImageDescriptionSettings(settings: ImageDescriptionSettings)
         { key: 'imageDescription.gemini.baseUrl', value: settings.providers.gemini.baseUrl },
         { key: 'imageDescription.gemini.model', value: settings.providers.gemini.model },
         { key: 'imageDescription.gemini.prompt', value: settings.providers.gemini.prompt }
+    ])
+}
+
+export function getEpisodeGenerationSettings(): EpisodeGenerationSettings {
+    let map = getAppSettingsMap()
+    let concurrentGenerations = parseInt(map.get('episodeGeneration.concurrentGenerations') || '', 10)
+
+    return {
+        concurrentGenerations: Number.isInteger(concurrentGenerations) && concurrentGenerations >= 1 && concurrentGenerations <= 20
+            ? concurrentGenerations
+            : defaultEpisodeGenerationSettings.concurrentGenerations
+    }
+}
+
+export function saveEpisodeGenerationSettings(settings: EpisodeGenerationSettings) {
+    upsertAppSettings([
+        { key: 'episodeGeneration.concurrentGenerations', value: String(settings.concurrentGenerations) }
     ])
 }
 
@@ -135,8 +151,7 @@ export function getServerBaseUrl(): string {
 }
 
 export function getServerSettings(): ServerSettings {
-    let rows = database.select().from(appSettingsTable).all()
-    let map = new Map(rows.map(r => [r.key, r.value]))
+    let map = getAppSettingsMap()
 
     let protocolRaw = map.get('server.protocol')
     let listenRaw = map.get('server.listenOnAllInterfaces')
@@ -176,6 +191,11 @@ function upsertAppSettings(entries: Array<{ key: string, value: string }>) {
             })
             .run()
     }
+}
+
+function getAppSettingsMap() {
+    let rows = database.select().from(appSettingsTable).all()
+    return new Map(rows.map(r => [r.key, r.value]))
 }
 
 function baseUrl(settings: ServerSettings) {
