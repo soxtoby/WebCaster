@@ -4,6 +4,7 @@
 
 ### Added
 - Better episode description with link to source article.
+- Episode generation queue to avoid hitting service limits.
 
 ## V1.0.4
 

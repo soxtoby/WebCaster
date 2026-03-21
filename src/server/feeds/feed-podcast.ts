@@ -34,7 +34,20 @@ type EpisodeProgress = {
     estimatedSecondsRemaining: number
 }
 
+type EpisodeGenerationJob = {
+    key: string
+    feedId: number
+    episodeKey: string
+    promise: Promise<void>
+    resolve: () => void
+    reject: (reason?: unknown) => void
+}
+
 let episodeProgress = new Map<string, EpisodeProgress>()
+let episodeGenerationJobs = new Map<string, EpisodeGenerationJob>()
+let queuedEpisodeJobKeys: string[] = []
+let activeEpisodeJobKey: string | null = null
+let queuedEpisodeCancelledMessage = 'Episode generation was cancelled'
 
 let pollerStarted = false
 
@@ -42,12 +55,12 @@ export async function resetInterruptedEpisodeGeneration() {
     let interrupted = database
         .select()
         .from(articlesTable)
-        .where(eq(articlesTable.status, 'generating'))
+        .where(inArray(articlesTable.status, ['generating', 'queued']))
         .all()
 
     for (let article of interrupted) {
         let feed = database.select().from(feedsTable).where(eq(feedsTable.id, article.feedId)).get()
-        if (feed) {
+        if (feed && article.status == 'generating') {
             let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
             try {
                 await unlink(resolvedPath)
@@ -166,42 +179,26 @@ export async function streamEpisodeAudio(feed: Feed, episodeKey: string): Promis
     if (await preferredFile.exists())
         return new Response(preferredFile, { headers: { 'content-type': 'audio/mpeg' } })
 
-    markArticleGenerating(feed.id, article.episodeKey, feed)
-
-    let generated: GeneratedAudio
     try {
-        generated = await createAudioStream(feed, article, progress => {
-            updateArticleChunkProgress(feed.id, article.episodeKey, progress.chunksProcessed, progress.chunksTotal)
-        })
+        await scheduleEpisodeGeneration(feed, article)
     } catch (error) {
         let message = error instanceof Error ? error.message : 'Audio generation failed'
-        markArticleFailed(feed.id, article.episodeKey, message)
+        if (!isCancelledEpisodeGenerationError(error))
+            markArticleFailed(feed.id, article.episodeKey, message)
         return new Response(message, { status: 400 })
     }
 
-    let [toClient, toDisk] = generated.audio.stream.tee()
-
-    if (generated.provider == 'inworld')
-        updateArticleChunkProgress(feed.id, article.episodeKey, 0, estimateChunkCount(generated.textLength))
-
-    let stopEstimatedProgress = startEstimatedProgressUpdates(
-        feed.id,
-        article.episodeKey,
-        generated.provider,
-        generated.textLength
-    )
-
-    void persistAudioStream(toDisk, resolvedPath, article, feed)
-        .finally(() => {
-            stopEstimatedProgress()
+    preferredFile = Bun.file(resolvedPath)
+    if (await preferredFile.exists()) {
+        return new Response(preferredFile, {
+            headers: {
+                'content-type': 'audio/mpeg',
+                'cache-control': 'no-store'
+            }
         })
+    }
 
-    return new Response(toClient, {
-        headers: {
-            'content-type': generated.audio.mimeType,
-            'cache-control': 'no-store'
-        }
-    })
+    return new Response('Generated audio was not found', { status: 500 })
 }
 
 
@@ -216,6 +213,8 @@ export async function setEpisodeVoiceOverride(feedId: number, episodeKey: string
 
     if (voiceId && !getCachedVoiceById(voiceId))
         return { updated: false, reason: 'voice_not_found' as const }
+
+    cancelQueuedEpisodeGeneration(feed.id, article.episodeKey)
 
     database
         .update(articlesTable)
@@ -370,17 +369,25 @@ async function syncFeed(feed: Feed, limit: number) {
             .from(articlesTable)
             .where(and(
                 eq(articlesTable.feedId, feed.id),
-                inArray(articlesTable.status, ['pending', 'failed'])
+                inArray(articlesTable.status, ['pending', 'failed', 'queued'])
             ))
             .orderBy(desc(articlesTable.publishedAt), desc(articlesTable.createdAt))
             .all()
 
         for (let article of pending)
-            await generateAndStoreAudio(feed, article)
+            void generateAndStoreAudio(feed, article)
     }
 }
 
 async function generateAndStoreAudio(feed: Feed, article: Article) {
+    try {
+        await scheduleEpisodeGeneration(feed, article)
+    } catch (error) {
+        console.error("Failed to generate and store audio for feed", feed.id, "episode", article.episodeKey, error)
+    }
+}
+
+async function scheduleEpisodeGeneration(feed: Feed, article: Article) {
     let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
     let file = Bun.file(resolvedPath)
     if (await file.exists()) {
@@ -388,11 +395,70 @@ async function generateAndStoreAudio(feed: Feed, article: Article) {
         return
     }
 
-    if (article.status == 'generating')
-        return
+    let jobKey = buildEpisodeProgressKey(feed.id, article.episodeKey)
+    let existingJob = episodeGenerationJobs.get(jobKey)
+    if (existingJob)
+        return await existingJob.promise
 
-    markArticleGenerating(feed.id, article.episodeKey, feed)
+    let resolveJob!: () => void
+    let rejectJob!: (reason?: unknown) => void
+    let jobPromise = new Promise<void>((resolve, reject) => {
+        resolveJob = resolve
+        rejectJob = reject
+    })
+
+    let job: EpisodeGenerationJob = {
+        key: jobKey,
+        feedId: feed.id,
+        episodeKey: article.episodeKey,
+        promise: jobPromise,
+        resolve: resolveJob,
+        reject: rejectJob
+    }
+
+    episodeGenerationJobs.set(jobKey, job)
+
+    if (activeEpisodeJobKey == null) {
+        startEpisodeGenerationJob(job)
+    } else {
+        queuedEpisodeJobKeys.push(job.key)
+        markArticleQueued(feed.id, article.episodeKey)
+    }
+
+    return await job.promise
+}
+
+function startEpisodeGenerationJob(job: EpisodeGenerationJob) {
+    activeEpisodeJobKey = job.key
+    queuedEpisodeJobKeys = queuedEpisodeJobKeys.filter(key => key != job.key)
+    void runEpisodeGenerationJob(job)
+}
+
+async function runEpisodeGenerationJob(job: EpisodeGenerationJob) {
     try {
+        let feed = database.select().from(feedsTable).where(eq(feedsTable.id, job.feedId)).get()
+        if (!feed)
+            throw new Error('Feed not found')
+
+        let article = database
+            .select()
+            .from(articlesTable)
+            .where(and(eq(articlesTable.feedId, job.feedId), eq(articlesTable.episodeKey, job.episodeKey)))
+            .get()
+
+        if (!article)
+            throw new Error('Episode not found')
+
+        let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
+        let file = Bun.file(resolvedPath)
+        if (await file.exists()) {
+            markArticleReady(feed.id, article.episodeKey, buildAudioUrl(feed, article))
+            job.resolve()
+            return
+        }
+
+        markArticleGenerating(feed.id, article.episodeKey, feed)
+
         let generated = await createAudioStream(feed, article, progress => {
             updateArticleChunkProgress(feed.id, article.episodeKey, progress.chunksProcessed, progress.chunksTotal)
         })
@@ -412,10 +478,47 @@ async function generateAndStoreAudio(feed: Feed, article: Article) {
         } finally {
             stopEstimatedProgress()
         }
+
+        job.resolve()
     } catch (error) {
         let message = error instanceof Error ? error.message : 'Audio generation failed'
-        markArticleFailed(feed.id, article.episodeKey, message)
+        markArticleFailed(job.feedId, job.episodeKey, message)
+        job.reject(error)
+    } finally {
+        finishEpisodeGenerationJob(job.key)
     }
+}
+
+function finishEpisodeGenerationJob(jobKey: string) {
+    episodeGenerationJobs.delete(jobKey)
+
+    if (activeEpisodeJobKey == jobKey)
+        activeEpisodeJobKey = null
+
+    queuedEpisodeJobKeys = queuedEpisodeJobKeys.filter(key => key != jobKey)
+
+    let nextJobKey = queuedEpisodeJobKeys.shift()!
+    let nextJob = episodeGenerationJobs.get(nextJobKey)
+    if (nextJob)
+        startEpisodeGenerationJob(nextJob)
+}
+
+function cancelQueuedEpisodeGeneration(feedId: number, episodeKey: string) {
+    let jobKey = buildEpisodeProgressKey(feedId, episodeKey)
+    if (activeEpisodeJobKey == jobKey)
+        return
+
+    let queuedJob = episodeGenerationJobs.get(jobKey)
+    if (!queuedJob)
+        return
+
+    episodeGenerationJobs.delete(jobKey)
+    queuedEpisodeJobKeys = queuedEpisodeJobKeys.filter(key => key != jobKey)
+    queuedJob.reject(new Error(queuedEpisodeCancelledMessage))
+}
+
+function isCancelledEpisodeGenerationError(error: unknown) {
+    return error instanceof Error && error.message == queuedEpisodeCancelledMessage
 }
 
 type GeneratedAudio = {
@@ -542,6 +645,20 @@ function markArticleGenerating(feedId: number, episodeKey: string, feed: Feed) {
         progressMode: 'none',
         estimatedSecondsRemaining: 0
     })
+}
+
+function markArticleQueued(feedId: number, episodeKey: string) {
+    database
+        .update(articlesTable)
+        .set({
+            status: 'queued',
+            errorMessage: null,
+            updatedAt: sql`CURRENT_TIMESTAMP`
+        })
+        .where(and(eq(articlesTable.feedId, feedId), eq(articlesTable.episodeKey, episodeKey)))
+        .run()
+
+    clearEpisodeProgress(feedId, episodeKey)
 }
 
 function markArticleReady(feedId: number, episodeKey: string, audioUrl: string) {

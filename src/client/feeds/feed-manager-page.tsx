@@ -112,7 +112,7 @@ export function FeedManagerPage() {
         if (selectedFeedId == null)
             return
 
-        if (!episodes.some(episode => episode.status == 'generating'))
+        if (!episodes.some(episode => episode.status == 'generating' || episode.status == 'queued'))
             return
 
         let timer = setInterval(() => {
@@ -221,13 +221,16 @@ export function FeedManagerPage() {
                         setDraft(current => ({ ...current, [field]: value }))
                     }}
                     onPlayEpisode={episode => {
-                        if (!episode.audioReady && episode.status != 'generating') {
+                        if (!episode.audioReady && episode.status != 'generating' && episode.status != 'queued') {
                             setEpisodes(current => current.map(entry => entry.episodeKey == episode.episodeKey
                                 ? {
                                     ...entry,
-                                    status: 'generating',
-                                    progressPercent: Math.max(1, entry.progressPercent),
-                                    progressMode: entry.progressMode == 'none' ? 'estimated' : entry.progressMode
+                                    status: 'queued',
+                                    progressPercent: 0,
+                                    progressMode: 'none',
+                                    chunksProcessed: 0,
+                                    chunksTotal: 0,
+                                    estimatedSecondsRemaining: 0
                                 }
                                 : entry
                             ))
