@@ -9,36 +9,102 @@ import { updateDir, updateExePath } from "./paths"
 let GITHUB_REPO = 'soxtoby/WebCaster'
 
 let CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
+let pendingUpdateVersion: string | null = null
+
+export type UpdateCheckResult = {
+    status: 'unsupported' | 'up-to-date' | 'update-ready' | 'failed'
+    currentVersion: string
+    latestVersion?: string
+}
 
 export function startUpdateChecker() {
-    if (!process.execPath.toLowerCase().endsWith('webcaster.exe'))
+    if (!canCheckForUpdates())
         return
 
     setTimeout(async () => {
         await checkForUpdate()
-        setInterval(checkForUpdate, CHECK_INTERVAL_MS)
+        setInterval(() => {
+            void checkForUpdate()
+        }, CHECK_INTERVAL_MS)
     }, 60_000)
 }
 
-async function checkForUpdate() {
+export async function checkForUpdateNow(): Promise<UpdateCheckResult> {
+    return await checkForUpdate()
+}
+
+function canCheckForUpdates() {
+    return process.execPath.toLowerCase().endsWith('webcaster.exe')
+}
+
+async function checkForUpdate(): Promise<UpdateCheckResult> {
+    if (!canCheckForUpdates()) {
+        return {
+            status: 'unsupported',
+            currentVersion: CURRENT_VERSION
+        }
+    }
+
+    if (pendingUpdateVersion && isNewerVersion(pendingUpdateVersion, CURRENT_VERSION)) {
+        return {
+            status: 'update-ready',
+            currentVersion: CURRENT_VERSION,
+            latestVersion: pendingUpdateVersion
+        }
+    }
+
     try {
         let res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
             headers: { 'User-Agent': 'WebCaster' }
         })
-        if (!res.ok) return
+        if (!res.ok) {
+            return {
+                status: 'failed',
+                currentVersion: CURRENT_VERSION
+            }
+        }
 
         let release = await res.json() as { tag_name: string; assets: { name: string; browser_download_url: string }[] }
         let latestVersion = release.tag_name.replace(/^v/, '')
 
-        if (!isNewerVersion(latestVersion, CURRENT_VERSION)) return
+        if (!isNewerVersion(latestVersion, CURRENT_VERSION)) {
+            return {
+                status: 'up-to-date',
+                currentVersion: CURRENT_VERSION,
+                latestVersion
+            }
+        }
 
         let asset = release.assets.find(a => a.name === 'WebCaster.exe')
-        if (!asset) return
+        if (!asset) {
+            return {
+                status: 'failed',
+                currentVersion: CURRENT_VERSION,
+                latestVersion
+            }
+        }
 
         let downloaded = await downloadUpdate(asset.browser_download_url)
-        if (downloaded)
+        if (downloaded) {
+            pendingUpdateVersion = latestVersion
             setUpdateAvailable(latestVersion, applyUpdate)
+            return {
+                status: 'update-ready',
+                currentVersion: CURRENT_VERSION,
+                latestVersion
+            }
+        }
+
+        return {
+            status: 'failed',
+            currentVersion: CURRENT_VERSION,
+            latestVersion
+        }
     } catch {
+        return {
+            status: 'failed',
+            currentVersion: CURRENT_VERSION
+        }
     }
 }
 
