@@ -5,6 +5,7 @@
 ### Added
 - Better episode description with link to source article.
 - Episode generation queue to avoid hitting service limits.
+- Estimated duration of episodes before the audio has been generated.
 
 ## V1.0.4
 

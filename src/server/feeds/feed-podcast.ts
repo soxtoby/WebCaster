@@ -15,6 +15,8 @@ type EpisodeView = {
     sourceUrl: string
     episodePath: string
     publishedAt: string | null
+    durationSeconds: number | null
+    isDurationEstimated: boolean
     status: string
     errorMessage: string | null
     voice: string | null
@@ -41,6 +43,13 @@ type EpisodeGenerationJob = {
     promise: Promise<void>
     resolve: () => void
     reject: (reason?: unknown) => void
+}
+
+type StoredEpisodeDurationSource = Pick<Article, 'feedId' | 'episodeKey' | 'title' | 'summary' | 'content' | 'transcript' | 'durationSeconds' | 'status'>
+
+type EpisodeDurationInfo = {
+    durationSeconds: number | null
+    isDurationEstimated: boolean
 }
 
 let episodeProgress = new Map<string, EpisodeProgress>()
@@ -121,6 +130,10 @@ export async function listFeedEpisodes(feedId: number): Promise<EpisodeView[]> {
             title: articlesTable.title,
             sourceUrl: articlesTable.sourceUrl,
             publishedAt: articlesTable.publishedAt,
+            summary: articlesTable.summary,
+            content: articlesTable.content,
+            transcript: articlesTable.transcript,
+            durationSeconds: articlesTable.durationSeconds,
             voice: articlesTable.voice,
             status: articlesTable.status,
             errorMessage: articlesTable.errorMessage
@@ -134,12 +147,26 @@ export async function listFeedEpisodes(feedId: number): Promise<EpisodeView[]> {
         let episodeKey = resolveEpisodeKey(row.episodeKey, row.title, row.sourceUrl)
         let audioReady = await Bun.file(episodePath(feed.podcastSlug, episodeKey)).exists()
         let progress = getEpisodeProgress(feedId, row.episodeKey)
+        let duration = await resolveEpisodeDuration(feed, {
+            feedId,
+            episodeKey: row.episodeKey,
+            title: row.title,
+            sourceUrl: row.sourceUrl,
+            summary: row.summary,
+            content: row.content,
+            transcript: row.transcript,
+            durationSeconds: row.durationSeconds,
+            status: row.status
+        })
+
         return {
             episodeKey,
             title: row.title,
             sourceUrl: row.sourceUrl,
             episodePath: `/feed/${feed.podcastSlug}/${episodeKey}`,
             publishedAt: row.publishedAt,
+            durationSeconds: duration.durationSeconds,
+            isDurationEstimated: duration.isDurationEstimated,
             status: row.status,
             errorMessage: row.errorMessage,
             voice: row.voice,
@@ -169,7 +196,7 @@ export async function buildPodcastFeedXml(feed: Feed) {
     let channelImage = feed.imageUrl ? `<image><url>${escapeXml(feed.imageUrl)}</url><title>${safeTitle}</title><link>${escapeXml(feed.rssUrl)}</link></image>` : ''
     let items = (await Promise.all(episodes.map(episode => buildRssItem(feed, episode)))).join('')
 
-    return `<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">\n<channel>\n<title>${safeTitle}</title>\n<link>${escapeXml(feed.rssUrl)}</link>\n<description>${safeDescription}</description>\n<atom:link href="${escapeXml(selfLink)}" rel="self" type="application/rss+xml"/>\n${channelImage}\n${items}\n</channel>\n</rss>`
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">\n<channel>\n<title>${safeTitle}</title>\n<link>${escapeXml(feed.rssUrl)}</link>\n<description>${safeDescription}</description>\n<atom:link href="${escapeXml(selfLink)}" rel="self" type="application/rss+xml"/>\n${channelImage}\n${items}\n</channel>\n</rss>`
 }
 
 export async function streamEpisodeAudio(feed: Feed, episodeKey: string): Promise<Response> {
@@ -325,6 +352,13 @@ export async function insertFeedArticles(feedId: number, generationMode: string,
             forceRegenerateImageDescriptions: false
         })
         let episodeKey = buildEpisodeRouteKey(prepared.title, prepared.sourceUrl)
+        let durationSeconds = estimateStoredEpisodeDurationSeconds({
+            title: prepared.title,
+            summary: prepared.summary,
+            content: prepared.content,
+            transcript: null
+        })
+
         database
             .insert(articlesTable)
             .values({
@@ -335,6 +369,7 @@ export async function insertFeedArticles(feedId: number, generationMode: string,
                 title: prepared.title,
                 summary: prepared.summary,
                 content: prepared.content,
+                durationSeconds,
                 voice: null,
                 status: 'pending',
                 generationMode,
@@ -350,6 +385,7 @@ export async function insertFeedArticles(feedId: number, generationMode: string,
                     title: prepared.title,
                     summary: prepared.summary,
                     content: prepared.content,
+                    durationSeconds,
                     generationMode,
                     contentSource,
                     publishedAt: prepared.publishedAt,
@@ -599,10 +635,15 @@ async function getStoredEpisodeTranscript(
 }
 
 function storeEpisodeTranscript(article: Article, transcript: string) {
+    let durationSeconds = article.status == 'ready' && article.durationSeconds != null
+        ? article.durationSeconds
+        : estimateEpisodeDurationSeconds(transcript)
+
     database
         .update(articlesTable)
         .set({
             transcript,
+            durationSeconds,
             updatedAt: sql`CURRENT_TIMESTAMP`
         })
         .where(and(eq(articlesTable.feedId, article.feedId), eq(articlesTable.episodeKey, article.episodeKey)))
@@ -870,6 +911,227 @@ function normalizeStoredFeedText(value: string) {
     return normalizeTranscriptText(decodeTranscriptText(value))
 }
 
+function resolveStoredEpisodeDurationEstimate(article: StoredEpisodeDurationSource) {
+    if (article.status == 'ready' && article.durationSeconds != null)
+        return article.durationSeconds
+
+    let durationSeconds = estimateStoredEpisodeDurationSeconds(article)
+    if (durationSeconds == null)
+        return null
+
+    if (article.durationSeconds != durationSeconds) {
+        database
+            .update(articlesTable)
+            .set({
+                durationSeconds,
+                updatedAt: sql`CURRENT_TIMESTAMP`
+            })
+            .where(and(eq(articlesTable.feedId, article.feedId), eq(articlesTable.episodeKey, article.episodeKey)))
+            .run()
+    }
+
+    return durationSeconds
+}
+
+async function resolveEpisodeDuration(feed: Pick<Feed, 'podcastSlug'>, article: StoredEpisodeDurationSource & Pick<Article, 'sourceUrl'>): Promise<EpisodeDurationInfo> {
+    if (article.status == 'ready' && article.durationSeconds != null) {
+        return {
+            durationSeconds: article.durationSeconds,
+            isDurationEstimated: false
+        }
+    }
+
+    let actualDurationSeconds = await getStoredAudioDurationSeconds(feed, article)
+    if (actualDurationSeconds != null) {
+        return {
+            durationSeconds: actualDurationSeconds,
+            isDurationEstimated: false
+        }
+    }
+
+    return {
+        durationSeconds: resolveStoredEpisodeDurationEstimate(article),
+        isDurationEstimated: true
+    }
+}
+
+async function getStoredAudioDurationSeconds(feed: Pick<Feed, 'podcastSlug'>, article: Pick<Article, 'feedId' | 'episodeKey' | 'title' | 'sourceUrl'>) {
+    let file = Bun.file(episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl)))
+    if (!await file.exists())
+        return null
+
+    let bytes = new Uint8Array(await file.arrayBuffer())
+    let durationSeconds = parseMp3DurationSeconds(bytes)
+    if (durationSeconds == null)
+        return null
+
+    database
+        .update(articlesTable)
+        .set({
+            durationSeconds,
+            updatedAt: sql`CURRENT_TIMESTAMP`
+        })
+        .where(and(eq(articlesTable.feedId, article.feedId), eq(articlesTable.episodeKey, article.episodeKey)))
+        .run()
+
+    return durationSeconds
+}
+
+function estimateStoredEpisodeDurationSeconds(article: Pick<Article, 'title' | 'summary' | 'content' | 'transcript'>) {
+    let narrationText = article.transcript ?? buildStoredNarrationFallback(article)
+    return estimateEpisodeDurationSeconds(narrationText)
+}
+
+function buildStoredNarrationFallback(article: Pick<Article, 'title' | 'summary' | 'content'>) {
+    let preparedContent = normalizeStoredFeedText(article.content || article.summary || '')
+    return [decodeTranscriptText(article.title), preparedContent].join('\n\n').trim()
+}
+
+function estimateEpisodeDurationSeconds(value: string) {
+    let text = normalizeTranscriptText(decodeTranscriptText(value))
+    if (!text)
+        return null
+
+    let wordCount = text.split(/\s+/).filter(Boolean).length
+    if (wordCount <= 0)
+        return null
+
+    return Math.max(10, Math.ceil((wordCount / 150) * 60))
+}
+
+function parseMp3DurationSeconds(bytes: Uint8Array) {
+    let offset = skipId3Tag(bytes)
+    let totalSamples = 0
+    let sampleRate = 0
+    let parsedFrames = 0
+
+    while (offset + 4 <= bytes.length) {
+        let header = readMp3FrameHeader(bytes, offset)
+        if (!header) {
+            if (parsedFrames > 0)
+                break
+
+            offset += 1
+            continue
+        }
+
+        totalSamples += header.samplesPerFrame
+        sampleRate = header.sampleRate
+        parsedFrames += 1
+        offset += header.frameLength
+    }
+
+    if (parsedFrames == 0 || sampleRate <= 0)
+        return null
+
+    return Math.max(1, Math.round(totalSamples / sampleRate))
+}
+
+function skipId3Tag(bytes: Uint8Array) {
+    if (bytes.length < 10 || bytes[0] != 0x49 || bytes[1] != 0x44 || bytes[2] != 0x33)
+        return 0
+
+    let flags = bytes[5] ?? 0
+    let size0 = bytes[6] ?? 0
+    let size1 = bytes[7] ?? 0
+    let size2 = bytes[8] ?? 0
+    let size3 = bytes[9] ?? 0
+    let tagSize = ((size0 & 0x7f) << 21)
+        | ((size1 & 0x7f) << 14)
+        | ((size2 & 0x7f) << 7)
+        | (size3 & 0x7f)
+
+    return 10 + tagSize + ((flags & 0x10) ? 10 : 0)
+}
+
+function readMp3FrameHeader(bytes: Uint8Array, offset: number) {
+    if (offset + 4 > bytes.length)
+        return null
+
+    let byte0 = bytes[offset] ?? 0
+    let byte1 = bytes[offset + 1] ?? 0
+    let byte2 = bytes[offset + 2] ?? 0
+    let byte3 = bytes[offset + 3] ?? 0
+    let header = (byte0 << 24)
+        | (byte1 << 16)
+        | (byte2 << 8)
+        | byte3
+
+    if ((header & 0xffe00000) != 0xffe00000)
+        return null
+
+    let versionBits = (header >> 19) & 0x3
+    let layerBits = (header >> 17) & 0x3
+    let bitrateIndex = (header >> 12) & 0xf
+    let sampleRateIndex = (header >> 10) & 0x3
+    let padding = (header >> 9) & 0x1
+
+    if (versionBits == 1 || layerBits == 0 || bitrateIndex == 0 || bitrateIndex == 0xf || sampleRateIndex == 0x3)
+        return null
+
+    let version: 'mpeg1' | 'mpeg2' | 'mpeg2.5' = versionBits == 3 ? 'mpeg1' : versionBits == 2 ? 'mpeg2' : 'mpeg2.5'
+    let layer = layerBits == 3 ? 1 : layerBits == 2 ? 2 : 3
+    let bitrate = getMp3Bitrate(version, layer, bitrateIndex)
+    let sampleRate = getMp3SampleRate(version, sampleRateIndex)
+    if (!bitrate || !sampleRate)
+        return null
+
+    let samplesPerFrame = getMp3SamplesPerFrame(version, layer)
+    let frameLength = getMp3FrameLength(version, layer, bitrate, sampleRate, padding)
+    if (!samplesPerFrame || frameLength <= 0 || offset + frameLength > bytes.length)
+        return null
+
+    return {
+        sampleRate,
+        samplesPerFrame,
+        frameLength
+    }
+}
+
+function getMp3Bitrate(version: 'mpeg1' | 'mpeg2' | 'mpeg2.5', layer: number, bitrateIndex: number) {
+    let mpeg1Layer1 = [0, 32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448]
+    let mpeg1Layer2 = [0, 32, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384]
+    let mpeg1Layer3 = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320]
+    let mpeg2Layer1 = [0, 32, 48, 56, 64, 80, 96, 112, 128, 144, 160, 176, 192, 224, 256]
+    let mpeg2Layer23 = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160]
+
+    let kbps = version == 'mpeg1'
+        ? layer == 1 ? mpeg1Layer1[bitrateIndex] : layer == 2 ? mpeg1Layer2[bitrateIndex] : mpeg1Layer3[bitrateIndex]
+        : layer == 1 ? mpeg2Layer1[bitrateIndex] : mpeg2Layer23[bitrateIndex]
+
+    return kbps ? kbps * 1000 : 0
+}
+
+function getMp3SampleRate(version: 'mpeg1' | 'mpeg2' | 'mpeg2.5', sampleRateIndex: number) {
+    let table = version == 'mpeg1'
+        ? [44100, 48000, 32000]
+        : version == 'mpeg2'
+            ? [22050, 24000, 16000]
+            : [11025, 12000, 8000]
+
+    return table[sampleRateIndex] || 0
+}
+
+function getMp3SamplesPerFrame(version: 'mpeg1' | 'mpeg2' | 'mpeg2.5', layer: number) {
+    if (layer == 1)
+        return 384
+
+    if (layer == 2)
+        return 1152
+
+    return version == 'mpeg1' ? 1152 : 576
+}
+
+function getMp3FrameLength(version: 'mpeg1' | 'mpeg2' | 'mpeg2.5', layer: number, bitrate: number, sampleRate: number, padding: number) {
+    if (layer == 1)
+        return Math.floor(((12 * bitrate) / sampleRate + padding) * 4)
+
+    if (layer == 3 && version != 'mpeg1')
+        return Math.floor((72 * bitrate) / sampleRate + padding)
+
+    return Math.floor((144 * bitrate) / sampleRate + padding)
+}
+
 function normalizeTranscriptText(value: string) {
     return value
         .replace(/\r\n?/g, '\n')
@@ -925,12 +1187,28 @@ async function refreshStoredArticleFromFeed(feed: Feed, article: Article) {
     let prepared = await prepareParsedFeedArticleForStorage(refreshed, {
         forceRegenerateImageDescriptions: true
     })
+    let durationSeconds = article.transcript != null
+        ? article.durationSeconds ?? estimateEpisodeDurationSeconds(article.transcript)
+        : estimateStoredEpisodeDurationSeconds({
+            title: prepared.title,
+            summary: prepared.summary,
+            content: prepared.content,
+            transcript: null
+        })
+    if (article.status != 'ready')
+        durationSeconds = estimateStoredEpisodeDurationSeconds({
+            title: prepared.title,
+            summary: prepared.summary,
+            content: prepared.content,
+            transcript: article.transcript
+        })
 
     let nextArticle: Article = {
         ...article,
         title: prepared.title,
         summary: prepared.summary,
         content: prepared.content,
+        durationSeconds,
         guid: prepared.guid,
         publishedAt: prepared.publishedAt,
         updatedAt: new Date().toISOString()
@@ -942,6 +1220,7 @@ async function refreshStoredArticleFromFeed(feed: Feed, article: Article) {
             title: prepared.title,
             summary: prepared.summary,
             content: prepared.content,
+            durationSeconds,
             guid: prepared.guid,
             publishedAt: prepared.publishedAt,
             updatedAt: sql`CURRENT_TIMESTAMP`
@@ -1000,10 +1279,24 @@ async function buildRssItem(feed: Feed, article: Article) {
     let enclosureLength = await getEnclosureLength(feed, article)
     let guid = article.sourceUrl || article.guid || enclosureUrl
     let published = article.publishedAt ? `<pubDate>${new Date(article.publishedAt).toUTCString()}</pubDate>` : ''
+    let duration = await resolveEpisodeDuration(feed, article)
+    let durationTag = duration.durationSeconds != null ? `<itunes:duration>${formatPodcastDuration(duration.durationSeconds)}</itunes:duration>` : ''
     let description = escapeXml(buildEpisodeDescription(article))
     let title = escapeXml(article.title)
 
-    return `<item><title>${title}</title><guid isPermaLink="false">${escapeXml(guid)}</guid><link>${escapeXml(article.sourceUrl)}</link><description>${description}</description><enclosure url="${escapeXml(enclosureUrl)}" length="${enclosureLength}" type="audio/mpeg"/>${published}</item>`
+    return `<item><title>${title}</title><guid isPermaLink="false">${escapeXml(guid)}</guid><link>${escapeXml(article.sourceUrl)}</link><description>${description}</description><enclosure url="${escapeXml(enclosureUrl)}" length="${enclosureLength}" type="audio/mpeg"/>${durationTag}${published}</item>`
+}
+
+function formatPodcastDuration(value: number) {
+    let totalSeconds = Math.max(0, Math.floor(value))
+    let hours = Math.floor(totalSeconds / 3600)
+    let minutes = Math.floor((totalSeconds % 3600) / 60)
+    let seconds = totalSeconds % 60
+
+    if (hours > 0)
+        return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+
+    return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
 
 function buildEpisodeDescription(article: Article) {

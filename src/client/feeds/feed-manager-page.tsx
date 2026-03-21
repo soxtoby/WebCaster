@@ -21,6 +21,8 @@ type FeedEpisode = {
     title: string
     sourceUrl: string
     publishedAt: string | null
+    durationSeconds: number | null
+    isDurationEstimated: boolean
     status: string
     errorMessage: string | null
     audioReady: boolean

@@ -1,0 +1,1 @@
+ALTER TABLE `articles` ADD `duration_seconds` integer;

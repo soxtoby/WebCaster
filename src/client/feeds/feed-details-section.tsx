@@ -17,6 +17,8 @@ type Episode = {
     title: string
     sourceUrl: string
     publishedAt: string | null
+    durationSeconds: number | null
+    isDurationEstimated: boolean
     status: string
     errorMessage: string | null
     audioReady: boolean
@@ -174,6 +176,7 @@ export function FeedDetailsSection(props: {
                                 <tr>
                                     <th className={classes([thStyle, thTitleStyle])}>Episode Title</th>
                                     <th className={classes([thStyle, thDateStyle])}>Published</th>
+                                    <th className={classes([thStyle, thDurationStyle])}>Length</th>
                                     <th className={classes([thStyle, thStatusStyle])}>Status</th>
                                     <th className={classes([thStyle, thVoiceStyle])}>Voice</th>
                                     <th className={classes([thStyle, thTranscriptStyle])}>Transcript</th>
@@ -199,6 +202,9 @@ export function FeedDetailsSection(props: {
                                             </td>
                                             <td className={classes([tdStyle, tdDateStyle])}>
                                                 {dateStr}
+                                            </td>
+                                            <td className={classes([tdStyle, tdDurationStyle])}>
+                                                {buildEpisodeDurationLabel(episode)}
                                             </td>
                                             <td className={classes(tdStyle)}>
                                                 {episode.status == 'generating'
@@ -360,23 +366,37 @@ function buildEpisodeProgressLabel(episode: Episode) {
         let remaining = formatSeconds(episode.estimatedSecondsRemaining)
         if (remaining)
             return `${progressPercent}% · ${remaining} left (est.)`
+
         return `${progressPercent}% (est.)`
     }
 
     return `${progressPercent}%`
 }
 
+function buildEpisodeDurationLabel(episode: Episode) {
+    if (episode.durationSeconds == null)
+        return '—'
+
+    let formatted = formatSeconds(episode.durationSeconds)
+    if (!formatted)
+        return '—'
+
+    return episode.isDurationEstimated ? `~${formatted}` : formatted
+}
+
 function formatSeconds(value: number) {
     if (!Number.isFinite(value) || value <= 0)
         return ''
 
-    let minutes = Math.floor(value / 60)
-    let seconds = value % 60
-    if (minutes <= 0)
-        return `${seconds}s`
+    let totalSeconds = Math.floor(value)
+    let hours = Math.floor(totalSeconds / 3600)
+    let minutes = Math.floor(totalSeconds / 60)
+    let seconds = totalSeconds % 60
 
-    if (seconds == 0)
-        return `${minutes}m`
+    if (hours > 0)
+        return `${hours}:${String(minutes % 60).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+
+    return `${minutes}:${String(seconds).padStart(2, '0')}`
 
     return `${minutes}m ${seconds}s`
 }
@@ -613,6 +633,10 @@ let thDateStyle = style('thDate', {
     width: '15%'
 })
 
+let thDurationStyle = style('thDuration', {
+    width: 110
+})
+
 let thStatusStyle = style('thStatus', {
     width: 180
 })
@@ -664,6 +688,11 @@ let tdTitleStyle = style('tdTitle', {
 
 let tdDateStyle = style('tdDate', {
     color: 'var(--muted)'
+})
+
+let tdDurationStyle = style('tdDuration', {
+    color: 'var(--muted)',
+    whiteSpace: 'nowrap'
 })
 
 let tdVoiceStyle = style('tdVoice', {
