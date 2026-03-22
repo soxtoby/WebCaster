@@ -50,6 +50,7 @@ export type Article = InferSelectModel<typeof articlesTable>
 export const articlesTable = sqliteTable('articles', {
     feedId: integer('feed_id').notNull().references(() => feedsTable.id, { onDelete: 'cascade' }),
     episodeKey: text('episode_key').notNull().default(''),
+    articleSource: text('article_source').notNull().default('feed'),
     guid: text('guid'),
     sourceUrl: text('source_url').notNull(),
     title: text('title').notNull(),

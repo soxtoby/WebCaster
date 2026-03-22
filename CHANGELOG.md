@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- Custom feeds where articles are added manually.
+
 ## V1.0.5
 
 ### Added

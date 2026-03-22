@@ -6,8 +6,9 @@ import { episodePath, podcastDirectory } from "../paths"
 import { getCachedVoiceById, getEpisodeGenerationSettings, getServerBaseUrl, listProviderSettings } from "../settings/settings-repository"
 import { type TtsProvider } from "../settings/settings-types"
 import { streamSpeech, type StreamedAudio } from "../tts/tts"
-import { fetchFeed, type ParsedFeedArticle } from "./feed-parsing"
+import { fetchArticlePage, fetchFeed, type ParsedFeedArticle } from "./feed-parsing"
 import { replaceImagesWithDescriptionsWithOptions } from "./image-description"
+import { fetchSourceArticle } from "./source-article"
 
 type EpisodeView = {
     episodeKey: string
@@ -193,10 +194,11 @@ export async function buildPodcastFeedXml(feed: Feed) {
     let safeTitle = escapeXml(feed.name)
     let safeDescription = escapeXml(feed.description || '')
     let selfLink = buildFeedUrl(feed)
-    let channelImage = feed.imageUrl ? `<image><url>${escapeXml(feed.imageUrl)}</url><title>${safeTitle}</title><link>${escapeXml(feed.rssUrl)}</link></image>` : ''
+    let siteLink = feed.rssUrl || selfLink
+    let channelImage = feed.imageUrl ? `<image><url>${escapeXml(feed.imageUrl)}</url><title>${safeTitle}</title><link>${escapeXml(siteLink)}</link></image>` : ''
     let items = (await Promise.all(episodes.map(episode => buildRssItem(feed, episode)))).join('')
 
-    return `<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">\n<channel>\n<title>${safeTitle}</title>\n<link>${escapeXml(feed.rssUrl)}</link>\n<description>${safeDescription}</description>\n<atom:link href="${escapeXml(selfLink)}" rel="self" type="application/rss+xml"/>\n${channelImage}\n${items}\n</channel>\n</rss>`
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">\n<channel>\n<title>${safeTitle}</title>\n<link>${escapeXml(siteLink)}</link>\n<description>${safeDescription}</description>\n<atom:link href="${escapeXml(selfLink)}" rel="self" type="application/rss+xml"/>\n${channelImage}\n${items}\n</channel>\n</rss>`
 }
 
 export async function streamEpisodeAudio(feed: Feed, episodeKey: string): Promise<Response> {
@@ -345,8 +347,11 @@ async function syncAllFeeds(limit: number) {
         await syncFeed(feed, limit)
 }
 
-export async function insertFeedArticles(feedId: number, generationMode: string, contentSource: string, articles: ParsedFeedArticle[], limit = 20) {
-    let items = articles.slice(0, limit)
+export async function insertFeedArticles(feedId: number, generationMode: string, contentSource: string, articles: ParsedFeedArticle[], options?: { limit?: number; articleSource?: string }) {
+    let items = articles.slice(0, options?.limit ?? 20)
+    let articleSource = options?.articleSource ?? 'feed'
+    let storedArticles: Article[] = []
+
     for (let item of items) {
         let prepared = await prepareParsedFeedArticleForStorage(item, {
             forceRegenerateImageDescriptions: false
@@ -364,6 +369,7 @@ export async function insertFeedArticles(feedId: number, generationMode: string,
             .values({
                 feedId,
                 episodeKey,
+                articleSource,
                 guid: prepared.guid,
                 sourceUrl: prepared.sourceUrl,
                 title: prepared.title,
@@ -381,6 +387,7 @@ export async function insertFeedArticles(feedId: number, generationMode: string,
                 target: [articlesTable.feedId, articlesTable.sourceUrl],
                 set: {
                     episodeKey,
+                    articleSource,
                     guid: prepared.guid,
                     title: prepared.title,
                     summary: prepared.summary,
@@ -393,15 +400,24 @@ export async function insertFeedArticles(feedId: number, generationMode: string,
                 }
             })
             .run()
+
+        let stored = findArticleBySourceUrl(feedId, prepared.sourceUrl)
+        if (stored)
+            storedArticles.push(stored)
     }
+
+    return storedArticles
 }
 
 async function syncFeed(feed: Feed, limit: number) {
+    if (feed.contentSource == 'custom' || !feed.rssUrl.trim())
+        return
+
     let parsed = await fetchFeed(feed.rssUrl)
     if (!parsed)
         return
 
-    await insertFeedArticles(feed.id, feed.generationMode, feed.contentSource, parsed.articles, limit)
+    await insertFeedArticles(feed.id, feed.generationMode, feed.contentSource, parsed.articles, { limit })
 
     if (feed.generationMode == 'every_episode') {
         let pending = database
@@ -416,6 +432,42 @@ async function syncFeed(feed: Feed, limit: number) {
 
         for (let article of pending)
             void generateAndStoreAudio(feed, article)
+    }
+}
+
+export async function addManualArticle(feedId: number, sourceUrl: string) {
+    let feed = database.select().from(feedsTable).where(eq(feedsTable.id, feedId)).get()
+    if (!feed)
+        return { ok: false as const, reason: 'feed_not_found' as const }
+
+    if (feed.contentSource != 'custom')
+        return { ok: false as const, reason: 'feed_not_custom' as const }
+
+    let normalizedUrl = new URL(sourceUrl).toString()
+    let existing = findArticleBySourceUrl(feed.id, normalizedUrl)
+    if (existing)
+        return { ok: false as const, reason: 'duplicate_article' as const }
+
+    let parsed = await fetchArticlePage(normalizedUrl)
+    if (!parsed)
+        return { ok: false as const, reason: 'article_fetch_failed' as const }
+
+    let inserted = await insertFeedArticles(feed.id, feed.generationMode, feed.contentSource, [parsed], {
+        limit: 1,
+        articleSource: 'manual'
+    })
+    let article = inserted[0]
+    if (!article)
+        return { ok: false as const, reason: 'article_insert_failed' as const }
+
+    if (feed.generationMode == 'every_episode')
+        void generateAndStoreAudio(feed, article)
+
+    return {
+        ok: true as const,
+        episodeKey: resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl),
+        title: article.title,
+        sourceUrl: article.sourceUrl
     }
 }
 
@@ -844,51 +896,15 @@ async function resolveArticleText(feed: Feed, article: Article, options: { force
 }
 
 async function readSourcePage(sourceUrl: string, article: Article, options: { forceRegenerateImageDescriptions: boolean }) {
-    try {
-        let response = await fetch(sourceUrl)
-        if (!response.ok)
-            return fallbackArticleText(article)
-
-        let html = await response.text()
-        let extracted = await extractReadableText(html, sourceUrl, options)
-        if (!extracted)
-            return fallbackArticleText(article)
-
-        return [decodeTranscriptText(article.title), extracted].join('\n\n').trim()
-    }
-    catch {
+    let sourceArticle = await fetchSourceArticle(sourceUrl, options)
+    if (!sourceArticle?.text)
         return fallbackArticleText(article)
-    }
+
+    return [decodeTranscriptText(article.title), sourceArticle.text].join('\n\n').trim()
 }
 
 function fallbackArticleText(article: Article) {
     return decodeTranscriptText([article.title, article.content || article.summary || ''].join('\n\n').trim())
-}
-
-async function extractReadableText(html: string, sourceUrl: string, options: { forceRegenerateImageDescriptions: boolean }) {
-    let withoutScripts = html
-        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-        .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
-
-    let articleMatch = withoutScripts.match(/<article[\s\S]*?<\/article>/i)
-    let mainMatch = withoutScripts.match(/<main[\s\S]*?<\/main>/i)
-    let candidate = articleMatch?.[0] || mainMatch?.[0] || withoutScripts
-    let withImageDescriptions = await replaceImagesWithDescriptionsWithOptions(candidate, sourceUrl, {
-        forceRegenerate: options.forceRegenerateImageDescriptions
-    })
-
-    let text = withImageDescriptions
-        .replace(/<\/?(p|h1|h2|h3|h4|h5|h6|li|blockquote|section|article|main|div|br)[^>]*>/gi, '\n')
-        .replace(/<[^>]+>/g, ' ')
-        .trim()
-
-    text = normalizeTranscriptText(decodeTranscriptText(text))
-
-    if (text.length < 120)
-        return ''
-
-    return text
 }
 
 async function prepareNarrationText(value: string, sourceUrl: string, options: { forceRegenerateImageDescriptions: boolean }) {
@@ -1413,6 +1429,14 @@ function findArticleByEpisodeKey(feedId: number, episodeKey: string) {
     }
 
     return null
+}
+
+function findArticleBySourceUrl(feedId: number, sourceUrl: string) {
+    return database
+        .select()
+        .from(articlesTable)
+        .where(and(eq(articlesTable.feedId, feedId), eq(articlesTable.sourceUrl, sourceUrl)))
+        .get() || null
 }
 
 function buildEpisodeRouteKey(title: string, sourceUrl: string) {

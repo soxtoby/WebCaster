@@ -1,4 +1,5 @@
 import { XMLParser } from "fast-xml-parser"
+import { fetchSourceArticleFeedInput } from "./source-article"
 
 export type ParsedFeed = {
     title: string | null
@@ -58,6 +59,10 @@ export async function fetchFeed(rssUrl: string): Promise<ParsedFeed | null> {
     } catch {
         return null
     }
+}
+
+export async function fetchArticlePage(sourceUrl: string): Promise<ParsedFeedArticle | null> {
+    return await fetchSourceArticleFeedInput(sourceUrl)
 }
 
 function parseRssChannel(channel: any): ParsedFeed {

@@ -1,9 +1,9 @@
 import { TRPCError } from "@trpc/server"
 import { procedure } from "../trpc/trpc"
 import { fetchFeed, type ParsedFeedArticle } from "./feed-parsing"
-import { getEpisodeTranscript, insertFeedArticles, listFeedEpisodes, regenerateEpisodeTranscript as rebuildEpisodeTranscript, setEpisodeVoiceOverride, updateEpisodeTranscript as saveEpisodeTranscript } from "./feed-podcast"
+import { addManualArticle, getEpisodeTranscript, insertFeedArticles, listFeedEpisodes, regenerateEpisodeTranscript as rebuildEpisodeTranscript, setEpisodeVoiceOverride, updateEpisodeTranscript as saveEpisodeTranscript } from "./feed-podcast"
 import { createFeed as createFeedRecord, deleteFeedById as deleteFeedRecordById, getFeedById as getFeedRecordById, listFeeds as listFeedRecords, updateFeedById as updateFeedRecordById } from "./feed-repository"
-import { EpisodeTranscriptInput, EpisodeTranscriptUpdateInput, EpisodeVoiceInput, FeedIdInput, FeedInput, FeedUpdateInput } from "./feed-types"
+import { AddManualArticleInput, EpisodeTranscriptInput, EpisodeTranscriptUpdateInput, EpisodeVoiceInput, FeedIdInput, FeedInput, FeedUpdateInput } from "./feed-types"
 
 type EnrichedFeedInput = FeedInput & { description?: string | null; imageUrl?: string | null }
 
@@ -44,6 +44,34 @@ export const update = procedure
             return { feed }
 
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Feed not found' })
+    })
+
+export const addArticle = procedure
+    .input(AddManualArticleInput)
+    .mutation(async ({ input }) => {
+        let result = await addManualArticle(input.id, input.url)
+
+        if (!result.ok) {
+            if (result.reason == 'feed_not_found')
+                throw new TRPCError({ code: 'NOT_FOUND', message: 'Feed not found' })
+
+            if (result.reason == 'feed_not_custom')
+                throw new TRPCError({ code: 'BAD_REQUEST', message: 'Manual article URLs are only supported for custom feeds' })
+
+            if (result.reason == 'duplicate_article')
+                throw new TRPCError({ code: 'CONFLICT', message: 'That article URL is already in this feed' })
+
+            if (result.reason == 'article_fetch_failed')
+                throw new TRPCError({ code: 'BAD_REQUEST', message: 'Could not read article content from that URL' })
+
+            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to add article' })
+        }
+
+        return {
+            episodeKey: result.episodeKey,
+            title: result.title,
+            sourceUrl: result.sourceUrl
+        }
     })
 
 export const deleteFeed = procedure
@@ -152,6 +180,21 @@ export const updateEpisodeTranscript = procedure
 type EnrichResult = { enriched: EnrichedFeedInput; articles: ParsedFeedArticle[] }
 
 async function withFeedMetadata(input: FeedInput): Promise<EnrichResult> {
+    if (input.contentSource == 'custom') {
+        if (!input.name)
+            throw new Error('Name is required for custom feeds')
+
+        return {
+            enriched: {
+                ...input,
+                rssUrl: '',
+                description: 'Custom feed',
+                imageUrl: null
+            },
+            articles: []
+        }
+    }
+
     let parsed = await fetchFeed(input.rssUrl)
 
     if (!parsed) {

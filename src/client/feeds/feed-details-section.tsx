@@ -1,4 +1,4 @@
-import { type ChangeEvent, useState } from "react"
+import { type ChangeEvent, useEffect, useState } from "react"
 import { classes, style } from "stylemap"
 import { buildEpisodeTranscriptDialogId, EpisodeTranscriptDialog } from "./episode-transcript-dialog"
 import { VoiceSelectorDialog } from "./voice-selector-dialog"
@@ -38,8 +38,10 @@ export function FeedDetailsSection(props: {
     episodes: Episode[]
     error: string
     feedId: number | null
+    isAddingArticle: boolean
     isEditing: boolean
     podcastUrl: string
+    onAddArticle: (url: string) => Promise<void>
     onCancel: () => void
     onDelete: () => void
     onDraftChange: (field: keyof FeedDraft, value: string) => void
@@ -51,6 +53,12 @@ export function FeedDetailsSection(props: {
     voiceOptions: VoiceOption[]
 }) {
     let [isSettingsExpanded, setIsSettingsExpanded] = useState(!props.isEditing)
+    let [articleUrl, setArticleUrl] = useState('')
+    let isCustomFeed = props.draft.contentSource == 'custom'
+
+    useEffect(() => {
+        setArticleUrl('')
+    }, [props.feedId, props.draft.contentSource])
 
     let sortedEpisodes = [...props.episodes].sort((a, b) => {
         if (!a.publishedAt) return 1
@@ -92,12 +100,20 @@ export function FeedDetailsSection(props: {
                         onChange={value => props.onDraftChange('name', value)}
                         placeholder="Daily Tech News"
                     />
-                    <Field
-                        label="RSS URL"
-                        value={props.draft.rssUrl}
-                        onChange={value => props.onDraftChange('rssUrl', value)}
-                        placeholder="https://example.com/feed.xml"
-                    />
+                    {isCustomFeed
+                        ? <div className={classes(fieldOuterStyle)}>
+                            <span className={classes(fieldLabelStyle)}>RSS URL</span>
+                            <div className={classes(customFeedNoteStyle)}>
+                                <span className={classes(customFeedNoteBadgeStyle)}>Custom</span>
+                                <span>Added manually below</span>
+                            </div>
+                        </div>
+                        : <Field
+                            label="RSS URL"
+                            value={props.draft.rssUrl}
+                            onChange={value => props.onDraftChange('rssUrl', value)}
+                            placeholder="https://example.com/feed.xml"
+                        />}
                     <VoiceSelectorField
                         label="Voice"
                         value={props.draft.voice}
@@ -113,7 +129,7 @@ export function FeedDetailsSection(props: {
                     <TextSelectField
                         label="Content source"
                         value={props.draft.contentSource}
-                        options={['feed_article', 'source_page']}
+                        options={['feed_article', 'source_page', 'custom']}
                         onChange={value => props.onDraftChange('contentSource', value)}
                     />
                 </div>
@@ -167,9 +183,42 @@ export function FeedDetailsSection(props: {
 
         {props.isEditing && (
             <div className={classes(episodesAreaStyle)}>
+                {isCustomFeed
+                    ? <div className={classes(customArticleBarStyle)}>
+                        <div className={classes(customArticleInfoStyle)}>
+                            <span className={classes(fieldLabelStyle)}>Add article URL</span>
+                            <span className={classes(customArticleHintStyle)}>Import a single web article as a podcast episode.</span>
+                        </div>
+                        <div className={classes(customArticleFormStyle)}>
+                            <input
+                                className={classes(fieldInputStyle)}
+                                onChange={(event: ChangeEvent<HTMLInputElement>) => setArticleUrl(event.target.value)}
+                                placeholder="https://example.com/article"
+                                type="url"
+                                value={articleUrl}
+                            />
+                            <button
+                                className={classes([actionButtonStyle, primaryButtonStyle])}
+                                disabled={!articleUrl.trim() || props.isAddingArticle}
+                                onClick={async () => {
+                                    let value = articleUrl.trim()
+                                    if (!value || props.isAddingArticle)
+                                        return
+
+                                    await props.onAddArticle(value)
+                                    setArticleUrl('')
+                                }}
+                                type="button"
+                            >
+                                {props.isAddingArticle ? 'Adding...' : 'Add article'}
+                            </button>
+                        </div>
+                    </div>
+                    : null}
+
                 <div className={classes(episodesListContainerStyle)}>
                     {sortedEpisodes.length === 0 ? (
-                        <div className={classes(emptyEpisodesStyle)}>No episodes discovered yet.</div>
+                        <div className={classes(emptyEpisodesStyle)}>{isCustomFeed ? 'No articles yet. Add a URL to create the first episode.' : 'No episodes discovered yet.'}</div>
                     ) : (
                         <table className={classes(episodesTableStyle)}>
                             <thead>
@@ -437,7 +486,8 @@ function TextSelectField(props: {
                     {option === 'on_demand' ? 'On demand' :
                         option === 'every_episode' ? 'Every episode' :
                             option === 'feed_article' ? 'Feed article' :
-                                option === 'source_page' ? 'Source page' : option}
+                                option === 'source_page' ? 'Source page' :
+                                    option === 'custom' ? 'Custom' : option}
                 </option>
             ))}
         </select>
@@ -540,6 +590,37 @@ let settingsActionsStyle = style('settingsActions', {
     marginTop: 'auto'
 })
 
+let customFeedNoteStyle = style('customFeedNote', {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    width: 'fit-content',
+    maxWidth: '100%',
+    border: '1px solid color-mix(in srgb, var(--border) 88%, transparent)',
+    borderRadius: 999,
+    padding: '7px 12px',
+    fontSize: 12,
+    lineHeight: 1.3,
+    color: 'var(--muted)',
+    backgroundColor: 'color-mix(in srgb, var(--bg) 82%, white)',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis'
+})
+
+let customFeedNoteBadgeStyle = style('customFeedNoteBadge', {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '2px 8px',
+    borderRadius: 999,
+    backgroundColor: 'color-mix(in srgb, var(--accent) 12%, white)',
+    color: 'var(--accent)',
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: '0.02em',
+    textTransform: 'uppercase'
+})
+
 let spacerStyle = style('spacer', {
     flex: 1
 })
@@ -590,6 +671,38 @@ let episodesAreaStyle = style('episodesArea', {
     flex: 1,
     minHeight: 0,
     backgroundColor: 'var(--panel)'
+})
+
+let customArticleBarStyle = style('customArticleBar', {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+    padding: '16px 20px',
+    borderBottom: '1px solid var(--border)',
+    backgroundColor: 'var(--bg)',
+    flexWrap: 'wrap'
+})
+
+let customArticleInfoStyle = style('customArticleInfo', {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+    minWidth: 0
+})
+
+let customArticleHintStyle = style('customArticleHint', {
+    fontSize: 13,
+    color: 'var(--muted)'
+})
+
+let customArticleFormStyle = style('customArticleForm', {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(280px, 1fr) auto',
+    gap: 12,
+    alignItems: 'center',
+    flex: 1,
+    minWidth: 'min(100%, 420px)'
 })
 
 let episodesListContainerStyle = style('episodesListContainer', {

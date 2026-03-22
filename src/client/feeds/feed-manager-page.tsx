@@ -41,6 +41,7 @@ export function FeedManagerPage() {
     let [draft, setDraft] = useState<FeedDraft>({ name: '', rssUrl: '', voice: '', generationMode: 'on_demand', contentSource: 'feed_article' })
     let [error, setError] = useState('')
     let [status, setStatus] = useState('')
+    let [isAddingArticle, setIsAddingArticle] = useState(false)
     let [podcastUrl, setPodcastUrl] = useState('')
     let [episodes, setEpisodes] = useState<FeedEpisode[]>([])
     let [activeEpisodeKey, setActiveEpisodeKey] = useState<string | null>(null)
@@ -177,7 +178,7 @@ export function FeedManagerPage() {
                             }
                             <div className={classes(feedTextStyle)}>
                                 <p className={classes(feedNameStyle)}>{feed.name || 'Untitled Feed'}</p>
-                                <p className={classes(feedMetaStyle)}>{feed.description || feed.rssUrl}</p>
+                                <p className={classes(feedMetaStyle)}>{feed.description || feed.rssUrl || 'Custom feed'}</p>
                             </div>
                         </div>
                     </button>)}
@@ -218,10 +219,12 @@ export function FeedManagerPage() {
                         setStatus('')
                         setError('')
                     }}
+                    isAddingArticle={isAddingArticle}
                     onDelete={() => removeFeed()}
                     onDraftChange={(field, value) => {
                         setDraft(current => ({ ...current, [field]: value }))
                     }}
+                    onAddArticle={addArticleToFeed}
                     onPlayEpisode={episode => {
                         if (!episode.audioReady && episode.status != 'generating' && episode.status != 'queued') {
                             setEpisodes(current => current.map(entry => entry.episodeKey == episode.episodeKey
@@ -263,8 +266,13 @@ export function FeedManagerPage() {
         setError('')
         setStatus('')
 
-        if (!draft.rssUrl.trim()) {
+        if (draft.contentSource != 'custom' && !draft.rssUrl.trim()) {
             setError('RSS URL is required')
+            return
+        }
+
+        if (draft.contentSource == 'custom' && !draft.name.trim()) {
+            setError('Name is required for custom feeds')
             return
         }
 
@@ -273,10 +281,12 @@ export function FeedManagerPage() {
             return
         }
 
+        let rssUrl = draft.contentSource == 'custom' ? '' : draft.rssUrl.trim()
+
         if (selectedFeed) {
             feedCollection.update(selectedFeed.id.toString(), f => {
                 f.name = draft.name.trim()
-                f.rssUrl = draft.rssUrl.trim()
+                f.rssUrl = rssUrl
                 f.voice = draft.voice
                 f.generationMode = draft.generationMode
                 f.contentSource = draft.contentSource
@@ -288,6 +298,7 @@ export function FeedManagerPage() {
             let newFeed = {
                 id: -1,
                 ...draft,
+                rssUrl,
                 description: null,
                 imageUrl: null,
                 podcastSlug: '',
@@ -295,10 +306,32 @@ export function FeedManagerPage() {
                 updatedAt: new Date().toISOString()
             }
             await feedCollection.insert(newFeed).isPersisted.promise
-            let newFeedId = feedCollection.toArray.findLast(f => f.rssUrl == newFeed.rssUrl)?.id ?? null
-            setSelectedFeedId(newFeedId)
+            setSelectedFeedId(null)
             setIsCreating(false)
             setStatus('Feed added')
+        }
+    }
+
+    async function addArticleToFeed(url: string) {
+        if (!selectedFeed)
+            return
+
+        setError('')
+        setStatus('')
+        setIsAddingArticle(true)
+
+        try {
+            await api.feeds.addArticle.mutate({ id: selectedFeed.id, url })
+            setStatus(selectedFeed.generationMode == 'every_episode' ? 'Article added and generation started' : 'Article added')
+            await loadEpisodes(selectedFeed.id)
+        }
+        catch (cause) {
+            let message = cause instanceof Error ? cause.message : 'Failed to add article'
+            setError(message)
+            throw cause
+        }
+        finally {
+            setIsAddingArticle(false)
         }
     }
 

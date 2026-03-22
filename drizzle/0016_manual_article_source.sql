@@ -1,0 +1,1 @@
+ALTER TABLE `articles` ADD `article_source` text NOT NULL DEFAULT 'feed';
