@@ -471,6 +471,41 @@ export async function addManualArticle(feedId: number, sourceUrl: string) {
     }
 }
 
+export async function removeManualArticle(feedId: number, episodeKey: string) {
+    let feed = database.select().from(feedsTable).where(eq(feedsTable.id, feedId)).get()
+    if (!feed)
+        return { ok: false as const, reason: 'feed_not_found' as const }
+
+    if (feed.contentSource != 'custom')
+        return { ok: false as const, reason: 'feed_not_custom' as const }
+
+    let article = findArticleByEpisodeKey(feed.id, episodeKey)
+    if (!article)
+        return { ok: false as const, reason: 'article_not_found' as const }
+
+    if (article.status == 'generating')
+        return { ok: false as const, reason: 'article_generating' as const }
+
+    cancelQueuedEpisodeGeneration(feed.id, article.episodeKey)
+
+    database
+        .delete(articlesTable)
+        .where(and(eq(articlesTable.feedId, feed.id), eq(articlesTable.episodeKey, article.episodeKey)))
+        .run()
+
+    clearEpisodeProgress(feed.id, article.episodeKey)
+
+    let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
+
+    try {
+        await unlink(resolvedPath)
+    }
+    catch {
+    }
+
+    return { ok: true as const }
+}
+
 async function generateAndStoreAudio(feed: Feed, article: Article) {
     try {
         await scheduleEpisodeGeneration(feed, article)

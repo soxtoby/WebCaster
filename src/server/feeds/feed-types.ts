@@ -46,6 +46,12 @@ export const AddManualArticleInput = object({
     url: pipe(string('Article URL is required'), trim(), minLength(1, 'Article URL is required'), url('Article URL must be a valid URL'))
 })
 
+export type RemoveManualArticleInput = InferOutput<typeof RemoveManualArticleInput>
+export const RemoveManualArticleInput = object({
+    ...FeedIdInput.entries,
+    episodeKey: pipe(string('Episode key is required'), trim(), minLength(1, 'Episode key is required'))
+})
+
 export type EpisodeVoiceInput = InferOutput<typeof EpisodeVoiceInput>
 export const EpisodeVoiceInput = object({
     ...FeedIdInput.entries,

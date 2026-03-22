@@ -1,9 +1,9 @@
 import { TRPCError } from "@trpc/server"
 import { procedure } from "../trpc/trpc"
 import { fetchFeed, type ParsedFeedArticle } from "./feed-parsing"
-import { addManualArticle, getEpisodeTranscript, insertFeedArticles, listFeedEpisodes, regenerateEpisodeTranscript as rebuildEpisodeTranscript, setEpisodeVoiceOverride, updateEpisodeTranscript as saveEpisodeTranscript } from "./feed-podcast"
+import { addManualArticle, getEpisodeTranscript, insertFeedArticles, listFeedEpisodes, regenerateEpisodeTranscript as rebuildEpisodeTranscript, removeManualArticle, setEpisodeVoiceOverride, updateEpisodeTranscript as saveEpisodeTranscript } from "./feed-podcast"
 import { createFeed as createFeedRecord, deleteFeedById as deleteFeedRecordById, getFeedById as getFeedRecordById, listFeeds as listFeedRecords, updateFeedById as updateFeedRecordById } from "./feed-repository"
-import { AddManualArticleInput, EpisodeTranscriptInput, EpisodeTranscriptUpdateInput, EpisodeVoiceInput, FeedIdInput, FeedInput, FeedUpdateInput } from "./feed-types"
+import { AddManualArticleInput, EpisodeTranscriptInput, EpisodeTranscriptUpdateInput, EpisodeVoiceInput, FeedIdInput, FeedInput, FeedUpdateInput, RemoveManualArticleInput } from "./feed-types"
 
 type EnrichedFeedInput = FeedInput & { description?: string | null; imageUrl?: string | null }
 
@@ -72,6 +72,30 @@ export const addArticle = procedure
             title: result.title,
             sourceUrl: result.sourceUrl
         }
+    })
+
+export const removeArticle = procedure
+    .input(RemoveManualArticleInput)
+    .mutation(async ({ input }) => {
+        let result = await removeManualArticle(input.id, input.episodeKey)
+
+        if (!result.ok) {
+            if (result.reason == 'feed_not_found')
+                throw new TRPCError({ code: 'NOT_FOUND', message: 'Feed not found' })
+
+            if (result.reason == 'feed_not_custom')
+                throw new TRPCError({ code: 'BAD_REQUEST', message: 'Articles can only be removed from custom feeds' })
+
+            if (result.reason == 'article_not_found')
+                throw new TRPCError({ code: 'NOT_FOUND', message: 'Article not found' })
+
+            if (result.reason == 'article_generating')
+                throw new TRPCError({ code: 'BAD_REQUEST', message: 'Wait for generation to finish before removing this article' })
+
+            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to remove article' })
+        }
+
+        return { success: true }
     })
 
 export const deleteFeed = procedure

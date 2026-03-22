@@ -45,9 +45,11 @@ export function FeedDetailsSection(props: {
     onCancel: () => void
     onDelete: () => void
     onDraftChange: (field: keyof FeedDraft, value: string) => void
+    onRemoveArticle: (episode: Episode) => void
     onPlayEpisode: (episode: Episode) => void
     onEpisodeVoiceChange: (episodeKey: string, voice: string) => void
     onSubmit: () => void
+    removingEpisodeKey: string | null
     status: string
     updatingEpisodeVoiceKey: string | null
     voiceOptions: VoiceOption[]
@@ -230,6 +232,7 @@ export function FeedDetailsSection(props: {
                                     <th className={classes([thStyle, thVoiceStyle])}>Voice</th>
                                     <th className={classes([thStyle, thTranscriptStyle])}>Transcript</th>
                                     <th className={classes([thStyle, thAudioStyle])}>Audio</th>
+                                    {isCustomFeed ? <th className={classes([thStyle, thActionsStyle])}>Actions</th> : null}
                                 </tr>
                             </thead>
                             <tbody>
@@ -340,6 +343,35 @@ export function FeedDetailsSection(props: {
                                                     </button>
                                                 )}
                                             </td>
+                                            {isCustomFeed
+                                                ? <td className={classes([tdStyle, tdActionsStyle])}>
+                                                    <details className={classes(rowMenuStyle)}>
+                                                        <summary
+                                                            className={classes(rowMenuTriggerStyle)}
+                                                            aria-label="Episode actions"
+                                                            title="Episode actions"
+                                                        >
+                                                            <svg className={classes(rowMenuTriggerIconStyle)} viewBox="0 0 24 24" aria-hidden="true">
+                                                                <path fill="currentColor" d="M12 7a1.75 1.75 0 1 1 0-3.5A1.75 1.75 0 0 1 12 7m0 7a1.75 1.75 0 1 1 0-3.5A1.75 1.75 0 0 1 12 14m0 7a1.75 1.75 0 1 1 0-3.5A1.75 1.75 0 0 1 12 21" />
+                                                            </svg>
+                                                        </summary>
+                                                        <div className={classes(rowMenuPopoverStyle)}>
+                                                            <button
+                                                                className={classes(removeArticleMenuButtonStyle)}
+                                                                disabled={props.removingEpisodeKey == episode.episodeKey || episode.status == 'generating'}
+                                                                onClick={(event) => {
+                                                                    props.onRemoveArticle(episode)
+                                                                    event.currentTarget.closest('details')?.removeAttribute('open')
+                                                                }}
+                                                                title={episode.status == 'generating' ? 'Wait for generation to finish before removing this article' : 'Remove article'}
+                                                                type="button"
+                                                            >
+                                                                {props.removingEpisodeKey == episode.episodeKey ? 'Removing...' : 'Remove article'}
+                                                            </button>
+                                                        </div>
+                                                    </details>
+                                                </td>
+                                                : null}
                                         </tr>
                                     )
                                 })}
@@ -768,6 +800,11 @@ let thAudioStyle = style('thAudio', {
     textAlign: 'right'
 })
 
+let thActionsStyle = style('thActions', {
+    width: 120,
+    textAlign: 'right'
+})
+
 let trStyle = style('tr', {
     borderBottom: '1px solid var(--border)',
     $: {
@@ -836,6 +873,61 @@ let transcriptButtonStyle = style('transcriptButton', {
 
 let tdAudioStyle = style('tdAudio', {
     textAlign: 'right'
+})
+
+let tdActionsStyle = style('tdActions', {
+    textAlign: 'right',
+    whiteSpace: 'nowrap',
+    position: 'relative'
+})
+
+let rowMenuStyle = style('rowMenu', {
+    position: 'relative',
+    display: 'inline-block'
+})
+
+let rowMenuTriggerStyle = style('rowMenuTrigger', {
+    listStyle: 'none',
+    width: 30,
+    height: 30,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: '1px solid var(--border)',
+    borderRadius: 999,
+    backgroundColor: 'var(--panel)',
+    color: 'var(--muted)',
+    cursor: 'pointer',
+    transition: 'all 0.1s',
+    $: {
+        '&::-webkit-details-marker': {
+            display: 'none'
+        },
+        '&:hover': {
+            borderColor: 'var(--accent)',
+            color: 'var(--accent)'
+        }
+    }
+})
+
+let rowMenuTriggerIconStyle = style('rowMenuTriggerIcon', {
+    width: 16,
+    height: 16,
+    display: 'block'
+})
+
+let rowMenuPopoverStyle = style('rowMenuPopover', {
+    position: 'absolute',
+    top: 'calc(100% + 8px)',
+    right: 0,
+    minWidth: 160,
+    padding: 6,
+    borderRadius: 12,
+    border: '1px solid color-mix(in srgb, var(--border) 90%, transparent)',
+    backgroundColor: 'color-mix(in srgb, var(--panel) 94%, white)',
+    boxShadow: '0 14px 32px rgba(15, 23, 42, 0.14)',
+    zIndex: 3,
+    backdropFilter: 'blur(10px)'
 })
 
 let episodeVoiceButtonStyle = style('episodeVoiceButton', {
@@ -964,6 +1056,29 @@ let playButtonStyle = style('playButton', {
         '&:hover': {
             borderColor: 'var(--accent)',
             color: 'var(--accent)'
+        }
+    }
+})
+
+let removeArticleMenuButtonStyle = style('removeArticleMenuButton', {
+    width: '100%',
+    border: 'none',
+    backgroundColor: 'transparent',
+    color: 'var(--danger)',
+    padding: '8px 10px',
+    borderRadius: 8,
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+    textAlign: 'left',
+    transition: 'all 0.1s',
+    $: {
+        '&:hover': {
+            backgroundColor: 'color-mix(in srgb, var(--danger) 10%, var(--panel))'
+        },
+        '&:disabled': {
+            opacity: 0.55,
+            cursor: 'not-allowed'
         }
     }
 })

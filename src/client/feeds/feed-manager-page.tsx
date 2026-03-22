@@ -42,6 +42,7 @@ export function FeedManagerPage() {
     let [error, setError] = useState('')
     let [status, setStatus] = useState('')
     let [isAddingArticle, setIsAddingArticle] = useState(false)
+    let [removingEpisodeKey, setRemovingEpisodeKey] = useState<string | null>(null)
     let [podcastUrl, setPodcastUrl] = useState('')
     let [episodes, setEpisodes] = useState<FeedEpisode[]>([])
     let [activeEpisodeKey, setActiveEpisodeKey] = useState<string | null>(null)
@@ -225,6 +226,7 @@ export function FeedManagerPage() {
                         setDraft(current => ({ ...current, [field]: value }))
                     }}
                     onAddArticle={addArticleToFeed}
+                    onRemoveArticle={episode => void removeArticleFromFeed(episode)}
                     onPlayEpisode={episode => {
                         if (!episode.audioReady && episode.status != 'generating' && episode.status != 'queued') {
                             setEpisodes(current => current.map(entry => entry.episodeKey == episode.episodeKey
@@ -249,6 +251,7 @@ export function FeedManagerPage() {
                     }}
                     onEpisodeVoiceChange={(episodeKey, voice) => void updateEpisodeVoice(episodeKey, voice)}
                     onSubmit={() => saveFeed()}
+                    removingEpisodeKey={removingEpisodeKey}
                     status={status}
                     updatingEpisodeVoiceKey={updatingEpisodeVoiceKey}
                     voiceOptions={resolvedVoiceOptions}
@@ -332,6 +335,38 @@ export function FeedManagerPage() {
         }
         finally {
             setIsAddingArticle(false)
+        }
+    }
+
+    async function removeArticleFromFeed(episode: FeedEpisode) {
+        if (!selectedFeed)
+            return
+
+        let confirmed = window.confirm(`Remove "${episode.title}" from "${selectedFeed.name || 'Untitled Feed'}"?`)
+        if (!confirmed)
+            return
+
+        setError('')
+        setStatus('')
+        setRemovingEpisodeKey(episode.episodeKey)
+
+        try {
+            await api.feeds.removeArticle.mutate({ id: selectedFeed.id, episodeKey: episode.episodeKey })
+
+            if (activeEpisodeKey == episode.episodeKey) {
+                setActiveEpisodeKey(null)
+                setActiveEpisodeAudioUrl('')
+            }
+
+            setStatus('Article removed')
+            await loadEpisodes(selectedFeed.id)
+        }
+        catch (cause) {
+            let message = cause instanceof Error ? cause.message : 'Failed to remove article'
+            setError(message)
+        }
+        finally {
+            setRemovingEpisodeKey(null)
         }
     }
 
