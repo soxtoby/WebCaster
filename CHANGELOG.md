@@ -6,6 +6,7 @@
 - Custom feeds where articles are added manually.
 - Setting feed generation mode to every episode only generates audio automatically for new articles.
 - Changing episode play button to a generate button when audio hasn't been generated yet.
+- Expandable episodes with more details and options.
 
 ## V1.0.5
 

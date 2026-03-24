@@ -45,6 +45,7 @@ export function FeedManagerPage() {
     let [removingEpisodeKey, setRemovingEpisodeKey] = useState<string | null>(null)
     let [podcastUrl, setPodcastUrl] = useState('')
     let [episodes, setEpisodes] = useState<FeedEpisode[]>([])
+    let [selectedEpisodeKey, setSelectedEpisodeKey] = useState<string | null>(null)
     let [activeEpisodeKey, setActiveEpisodeKey] = useState<string | null>(null)
     let [activeEpisodeAudioUrl, setActiveEpisodeAudioUrl] = useState('')
     let [updatingEpisodeVoiceKey, setUpdatingEpisodeVoiceKey] = useState<string | null>(null)
@@ -101,6 +102,7 @@ export function FeedManagerPage() {
     }, [selectedFeed, voiceOptions])
 
     useEffect(() => {
+        setSelectedEpisodeKey(null)
         setActiveEpisodeKey(null)
         setActiveEpisodeAudioUrl('')
 
@@ -111,6 +113,16 @@ export function FeedManagerPage() {
             setEpisodes([])
         }
     }, [selectedFeedId])
+
+    useEffect(() => {
+        if (selectedEpisodeKey && !episodes.some(episode => episode.episodeKey == selectedEpisodeKey))
+            setSelectedEpisodeKey(null)
+
+        if (activeEpisodeKey && !episodes.some(episode => episode.episodeKey == activeEpisodeKey)) {
+            setActiveEpisodeKey(null)
+            setActiveEpisodeAudioUrl('')
+        }
+    }, [episodes, selectedEpisodeKey, activeEpisodeKey])
 
     useEffect(() => {
         if (selectedFeedId == null)
@@ -229,13 +241,18 @@ export function FeedManagerPage() {
                     onCancelEpisodeGeneration={episode => void cancelEpisodeAudioGeneration(episode)}
                     onGenerateEpisode={episode => void generateEpisodeAudio(episode)}
                     onRemoveArticle={episode => void removeArticleFromFeed(episode)}
+                    onSelectEpisode={episodeKey => {
+                        setSelectedEpisodeKey(current => current == episodeKey ? null : episodeKey)
+                    }}
                     onPlayEpisode={episode => {
+                        setSelectedEpisodeKey(episode.episodeKey)
                         setActiveEpisodeKey(episode.episodeKey)
                         setActiveEpisodeAudioUrl(episode.audioUrl)
                     }}
                     onEpisodeVoiceChange={(episodeKey, voice) => void updateEpisodeVoice(episodeKey, voice)}
                     onSubmit={() => saveFeed()}
                     removingEpisodeKey={removingEpisodeKey}
+                    selectedEpisodeKey={selectedEpisodeKey}
                     status={status}
                     updatingEpisodeVoiceKey={updatingEpisodeVoiceKey}
                     voiceOptions={resolvedVoiceOptions}
@@ -341,6 +358,9 @@ export function FeedManagerPage() {
                 setActiveEpisodeKey(null)
                 setActiveEpisodeAudioUrl('')
             }
+
+            if (selectedEpisodeKey == episode.episodeKey)
+                setSelectedEpisodeKey(null)
 
             setStatus('Article removed')
             await loadEpisodes(selectedFeed.id)
