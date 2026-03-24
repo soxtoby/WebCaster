@@ -23,7 +23,12 @@ export const create = procedure
 
         let feed = createFeedRecord(result.enriched)
         if (result.articles.length > 0)
-            await insertFeedArticles(feed.id, feed.generationMode, feed.contentSource, result.articles)
+            await insertFeedArticles(
+                feed.id,
+                feed.generationMode == 'every_episode' ? 'on_demand' : feed.generationMode,
+                feed.contentSource,
+                result.articles
+            )
 
         return { feed }
     })

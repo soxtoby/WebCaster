@@ -356,6 +356,7 @@ export async function insertFeedArticles(feedId: number, generationMode: string,
         let prepared = await prepareParsedFeedArticleForStorage(item, {
             forceRegenerateImageDescriptions: false
         })
+        let existing = findArticleBySourceUrl(feedId, prepared.sourceUrl)
         let episodeKey = buildEpisodeRouteKey(prepared.title, prepared.sourceUrl)
         let durationSeconds = estimateStoredEpisodeDurationSeconds({
             title: prepared.title,
@@ -393,8 +394,6 @@ export async function insertFeedArticles(feedId: number, generationMode: string,
                     summary: prepared.summary,
                     content: prepared.content,
                     durationSeconds,
-                    generationMode,
-                    contentSource,
                     publishedAt: prepared.publishedAt,
                     updatedAt: sql`CURRENT_TIMESTAMP`
                 }
@@ -402,7 +401,7 @@ export async function insertFeedArticles(feedId: number, generationMode: string,
             .run()
 
         let stored = findArticleBySourceUrl(feedId, prepared.sourceUrl)
-        if (stored)
+        if (stored && !existing)
             storedArticles.push(stored)
     }
 
@@ -425,6 +424,7 @@ async function syncFeed(feed: Feed, limit: number) {
             .from(articlesTable)
             .where(and(
                 eq(articlesTable.feedId, feed.id),
+                eq(articlesTable.generationMode, 'every_episode'),
                 inArray(articlesTable.status, ['pending', 'failed', 'queued'])
             ))
             .orderBy(desc(articlesTable.publishedAt), desc(articlesTable.createdAt))

@@ -4,6 +4,7 @@
 
 ### Added
 - Custom feeds where articles are added manually.
+- Setting feed generation mode to every episode only generates audio automatically for new articles.
 
 ## V1.0.5
 
