@@ -226,26 +226,10 @@ export function FeedManagerPage() {
                         setDraft(current => ({ ...current, [field]: value }))
                     }}
                     onAddArticle={addArticleToFeed}
+                    onCancelEpisodeGeneration={episode => void cancelEpisodeAudioGeneration(episode)}
+                    onGenerateEpisode={episode => void generateEpisodeAudio(episode)}
                     onRemoveArticle={episode => void removeArticleFromFeed(episode)}
                     onPlayEpisode={episode => {
-                        if (!episode.audioReady && episode.status != 'generating' && episode.status != 'queued') {
-                            setEpisodes(current => current.map(entry => entry.episodeKey == episode.episodeKey
-                                ? {
-                                    ...entry,
-                                    status: 'queued',
-                                    progressPercent: 0,
-                                    progressMode: 'none',
-                                    chunksProcessed: 0,
-                                    chunksTotal: 0,
-                                    estimatedSecondsRemaining: 0
-                                }
-                                : entry
-                            ))
-
-                            if (selectedFeed)
-                                void loadEpisodes(selectedFeed.id)
-                        }
-
                         setActiveEpisodeKey(episode.episodeKey)
                         setActiveEpisodeAudioUrl(episode.audioUrl)
                     }}
@@ -367,6 +351,68 @@ export function FeedManagerPage() {
         }
         finally {
             setRemovingEpisodeKey(null)
+        }
+    }
+
+    async function generateEpisodeAudio(episode: FeedEpisode) {
+        if (!selectedFeed || episode.audioReady || episode.status == 'generating' || episode.status == 'queued')
+            return
+
+        setError('')
+        setStatus('')
+        setEpisodes(current => current.map(entry => entry.episodeKey == episode.episodeKey
+            ? {
+                ...entry,
+                status: 'queued',
+                errorMessage: null,
+                progressPercent: 0,
+                progressMode: 'none',
+                chunksProcessed: 0,
+                chunksTotal: 0,
+                estimatedSecondsRemaining: 0
+            }
+            : entry
+        ))
+
+        try {
+            await api.feeds.generateEpisode.mutate({ id: selectedFeed.id, episodeKey: episode.episodeKey })
+            await loadEpisodes(selectedFeed.id)
+        }
+        catch (cause) {
+            let message = cause instanceof Error ? cause.message : 'Failed to generate audio'
+            setError(message)
+            await loadEpisodes(selectedFeed.id)
+        }
+    }
+
+    async function cancelEpisodeAudioGeneration(episode: FeedEpisode) {
+        if (!selectedFeed || (episode.status != 'generating' && episode.status != 'queued'))
+            return
+
+        setError('')
+        setStatus('')
+        setEpisodes(current => current.map(entry => entry.episodeKey == episode.episodeKey
+            ? {
+                ...entry,
+                status: 'pending',
+                errorMessage: null,
+                progressPercent: 0,
+                progressMode: 'none',
+                chunksProcessed: 0,
+                chunksTotal: 0,
+                estimatedSecondsRemaining: 0
+            }
+            : entry
+        ))
+
+        try {
+            await api.feeds.cancelEpisode.mutate({ id: selectedFeed.id, episodeKey: episode.episodeKey })
+            await loadEpisodes(selectedFeed.id)
+        }
+        catch (cause) {
+            let message = cause instanceof Error ? cause.message : 'Failed to cancel audio generation'
+            setError(message)
+            await loadEpisodes(selectedFeed.id)
         }
     }
 

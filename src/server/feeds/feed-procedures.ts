@@ -1,9 +1,9 @@
 import { TRPCError } from "@trpc/server"
 import { procedure } from "../trpc/trpc"
 import { fetchFeed, type ParsedFeedArticle } from "./feed-parsing"
-import { addManualArticle, getEpisodeTranscript, insertFeedArticles, listFeedEpisodes, regenerateEpisodeTranscript as rebuildEpisodeTranscript, removeManualArticle, setEpisodeVoiceOverride, updateEpisodeTranscript as saveEpisodeTranscript } from "./feed-podcast"
+import { addManualArticle, cancelEpisodeGeneration as stopEpisodeGeneration, getEpisodeTranscript, insertFeedArticles, listFeedEpisodes, queueEpisodeGeneration as requestEpisodeGeneration, regenerateEpisodeTranscript as rebuildEpisodeTranscript, removeManualArticle, setEpisodeVoiceOverride, updateEpisodeTranscript as saveEpisodeTranscript } from "./feed-podcast"
 import { createFeed as createFeedRecord, deleteFeedById as deleteFeedRecordById, getFeedById as getFeedRecordById, listFeeds as listFeedRecords, updateFeedById as updateFeedRecordById } from "./feed-repository"
-import { AddManualArticleInput, EpisodeTranscriptInput, EpisodeTranscriptUpdateInput, EpisodeVoiceInput, FeedIdInput, FeedInput, FeedUpdateInput, RemoveManualArticleInput } from "./feed-types"
+import { AddManualArticleInput, EpisodeActionInput, EpisodeTranscriptInput, EpisodeTranscriptUpdateInput, EpisodeVoiceInput, FeedIdInput, FeedInput, FeedUpdateInput, RemoveManualArticleInput } from "./feed-types"
 
 type EnrichedFeedInput = FeedInput & { description?: string | null; imageUrl?: string | null }
 
@@ -141,6 +141,41 @@ export const setEpisodeVoice = procedure
 
             if (result.reason == 'voice_not_found')
                 throw new TRPCError({ code: 'BAD_REQUEST', message: 'Voice not found' })
+        }
+
+        return { success: true }
+    })
+
+export const generateEpisode = procedure
+    .input(EpisodeActionInput)
+    .mutation(async ({ input }) => {
+        let result = await requestEpisodeGeneration(input.id, input.episodeKey)
+
+        if (!result.ok) {
+            if (result.reason == 'feed_not_found')
+                throw new TRPCError({ code: 'NOT_FOUND', message: 'Feed not found' })
+
+            if (result.reason == 'episode_not_found')
+                throw new TRPCError({ code: 'NOT_FOUND', message: 'Episode not found' })
+        }
+
+        return { success: true, status: result.status }
+    })
+
+export const cancelEpisode = procedure
+    .input(EpisodeActionInput)
+    .mutation(async ({ input }) => {
+        let result = await stopEpisodeGeneration(input.id, input.episodeKey)
+
+        if (!result.ok) {
+            if (result.reason == 'feed_not_found')
+                throw new TRPCError({ code: 'NOT_FOUND', message: 'Feed not found' })
+
+            if (result.reason == 'episode_not_found')
+                throw new TRPCError({ code: 'NOT_FOUND', message: 'Episode not found' })
+
+            if (result.reason == 'episode_not_generating')
+                throw new TRPCError({ code: 'BAD_REQUEST', message: 'Episode is not currently being generated' })
         }
 
         return { success: true }

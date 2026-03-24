@@ -65,6 +65,12 @@ export const EpisodeTranscriptInput = object({
     episodeKey: pipe(string('Episode key is required'), trim(), minLength(1, 'Episode key is required'))
 })
 
+export type EpisodeActionInput = InferOutput<typeof EpisodeActionInput>
+export const EpisodeActionInput = object({
+    ...FeedIdInput.entries,
+    episodeKey: pipe(string('Episode key is required'), trim(), minLength(1, 'Episode key is required'))
+})
+
 export type EpisodeTranscriptUpdateInput = InferOutput<typeof EpisodeTranscriptUpdateInput>
 export const EpisodeTranscriptUpdateInput = object({
     ...EpisodeTranscriptInput.entries,

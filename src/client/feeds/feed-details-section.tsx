@@ -43,8 +43,10 @@ export function FeedDetailsSection(props: {
     podcastUrl: string
     onAddArticle: (url: string) => Promise<void>
     onCancel: () => void
+    onCancelEpisodeGeneration: (episode: Episode) => void
     onDelete: () => void
     onDraftChange: (field: keyof FeedDraft, value: string) => void
+    onGenerateEpisode: (episode: Episode) => void
     onRemoveArticle: (episode: Episode) => void
     onPlayEpisode: (episode: Episode) => void
     onEpisodeVoiceChange: (episodeKey: string, voice: string) => void
@@ -238,6 +240,7 @@ export function FeedDetailsSection(props: {
                             <tbody>
                                 {sortedEpisodes.map(episode => {
                                     let isPlayingEpisode = props.activeEpisodeKey === episode.episodeKey
+                                    let isGeneratingEpisode = episode.status == 'generating' || episode.status == 'queued'
 
                                     let dateStr = ''
                                     if (episode.publishedAt) {
@@ -331,7 +334,17 @@ export function FeedDetailsSection(props: {
                                                         preload="none"
                                                         src={props.activeEpisodeAudioUrl}
                                                     />
-                                                ) : (
+                                                ) : isGeneratingEpisode ? (
+                                                    <button
+                                                        aria-label="Cancel audio generation"
+                                                        className={classes([playButtonStyle, cancelAudioButtonStyle])}
+                                                        onClick={() => props.onCancelEpisodeGeneration(episode)}
+                                                        type="button"
+                                                        title="Cancel generation"
+                                                    >
+                                                        ✕ Cancel
+                                                    </button>
+                                                ) : episode.audioReady ? (
                                                     <button
                                                         aria-label="Play episode"
                                                         className={classes(playButtonStyle)}
@@ -340,6 +353,16 @@ export function FeedDetailsSection(props: {
                                                         title="Play audio"
                                                     >
                                                         ▶ Play
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        aria-label="Generate audio"
+                                                        className={classes([playButtonStyle, generateAudioButtonStyle])}
+                                                        onClick={() => props.onGenerateEpisode(episode)}
+                                                        type="button"
+                                                        title="Generate audio"
+                                                    >
+                                                        ⟳ Generate
                                                     </button>
                                                 )}
                                             </td>
@@ -1051,11 +1074,28 @@ let playButtonStyle = style('playButton', {
     display: 'inline-flex',
     alignItems: 'center',
     gap: 4,
+    whiteSpace: 'nowrap',
     transition: 'all 0.1s',
     $: {
         '&:hover': {
             borderColor: 'var(--accent)',
             color: 'var(--accent)'
+        }
+    }
+})
+
+let generateAudioButtonStyle = style('generateAudioButton', {
+    borderColor: 'color-mix(in srgb, var(--accent) 45%, var(--border))',
+    color: 'var(--accent)'
+})
+
+let cancelAudioButtonStyle = style('cancelAudioButton', {
+    borderColor: 'color-mix(in srgb, var(--danger) 45%, var(--border))',
+    color: 'var(--danger)',
+    $: {
+        '&:hover': {
+            borderColor: 'var(--danger)',
+            color: 'var(--danger)'
         }
     }
 })

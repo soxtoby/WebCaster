@@ -44,6 +44,7 @@ type EpisodeGenerationJob = {
     promise: Promise<void>
     resolve: () => void
     reject: (reason?: unknown) => void
+    cancelled: boolean
 }
 
 type StoredEpisodeDurationSource = Pick<Article, 'feedId' | 'episodeKey' | 'title' | 'summary' | 'content' | 'transcript' | 'durationSeconds' | 'status'>
@@ -57,7 +58,7 @@ let episodeProgress = new Map<string, EpisodeProgress>()
 let episodeGenerationJobs = new Map<string, EpisodeGenerationJob>()
 let queuedEpisodeJobKeys: string[] = []
 let activeEpisodeJobKeys = new Set<string>()
-let queuedEpisodeCancelledMessage = 'Episode generation was cancelled'
+let episodeGenerationCancelledMessage = 'Episode generation was cancelled'
 
 let pollerStarted = false
 
@@ -232,6 +233,61 @@ export async function streamEpisodeAudio(feed: Feed, episodeKey: string): Promis
     }
 
     return new Response('Generated audio was not found', { status: 500 })
+}
+
+export async function queueEpisodeGeneration(feedId: number, episodeKey: string) {
+    let feed = database.select().from(feedsTable).where(eq(feedsTable.id, feedId)).get()
+    if (!feed)
+        return { ok: false as const, reason: 'feed_not_found' as const }
+
+    let article = findArticleByEpisodeKey(feed.id, episodeKey)
+    if (!article)
+        return { ok: false as const, reason: 'episode_not_found' as const }
+
+    let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
+    let file = Bun.file(resolvedPath)
+    if (await file.exists()) {
+        markArticleReady(feed.id, article.episodeKey, buildAudioUrl(feed, article))
+        return { ok: true as const, status: 'ready' as const }
+    }
+
+    let job = ensureEpisodeGenerationJob(feed, article)
+
+    return {
+        ok: true as const,
+        status: activeEpisodeJobKeys.has(job.key) ? 'generating' as const : 'queued' as const
+    }
+}
+
+export async function cancelEpisodeGeneration(feedId: number, episodeKey: string) {
+    let feed = database.select().from(feedsTable).where(eq(feedsTable.id, feedId)).get()
+    if (!feed)
+        return { ok: false as const, reason: 'feed_not_found' as const }
+
+    let article = findArticleByEpisodeKey(feed.id, episodeKey)
+    if (!article)
+        return { ok: false as const, reason: 'episode_not_found' as const }
+
+    let jobKey = buildEpisodeProgressKey(feed.id, article.episodeKey)
+    let job = episodeGenerationJobs.get(jobKey)
+
+    if (activeEpisodeJobKeys.has(jobKey) && job) {
+        job.cancelled = true
+        markArticlePending(feed.id, article.episodeKey)
+        return { ok: true as const }
+    }
+
+    if (cancelQueuedEpisodeGeneration(feed.id, article.episodeKey)) {
+        markArticlePending(feed.id, article.episodeKey)
+        return { ok: true as const }
+    }
+
+    if (article.status == 'queued' || article.status == 'generating') {
+        markArticlePending(feed.id, article.episodeKey)
+        return { ok: true as const }
+    }
+
+    return { ok: false as const, reason: 'episode_not_generating' as const }
 }
 
 
@@ -522,10 +578,16 @@ async function scheduleEpisodeGeneration(feed: Feed, article: Article) {
         return
     }
 
+    let job = ensureEpisodeGenerationJob(feed, article)
+
+    return await job.promise
+}
+
+function ensureEpisodeGenerationJob(feed: Feed, article: Article) {
     let jobKey = buildEpisodeProgressKey(feed.id, article.episodeKey)
     let existingJob = episodeGenerationJobs.get(jobKey)
     if (existingJob)
-        return await existingJob.promise
+        return existingJob
 
     let resolveJob!: () => void
     let rejectJob!: (reason?: unknown) => void
@@ -540,7 +602,8 @@ async function scheduleEpisodeGeneration(feed: Feed, article: Article) {
         episodeKey: article.episodeKey,
         promise: jobPromise,
         resolve: resolveJob,
-        reject: rejectJob
+        reject: rejectJob,
+        cancelled: false
     }
 
     episodeGenerationJobs.set(jobKey, job)
@@ -552,7 +615,7 @@ async function scheduleEpisodeGeneration(feed: Feed, article: Article) {
         markArticleQueued(feed.id, article.episodeKey)
     }
 
-    return await job.promise
+    return job
 }
 
 function startEpisodeGenerationJob(job: EpisodeGenerationJob) {
@@ -590,6 +653,8 @@ async function runEpisodeGenerationJob(job: EpisodeGenerationJob) {
             updateArticleChunkProgress(feed.id, article.episodeKey, progress.chunksProcessed, progress.chunksTotal)
         })
 
+        throwIfEpisodeGenerationCancelled(job)
+
         if (generated.provider == 'inworld')
             updateArticleChunkProgress(feed.id, article.episodeKey, 0, estimateChunkCount(generated.textLength))
 
@@ -601,7 +666,7 @@ async function runEpisodeGenerationJob(job: EpisodeGenerationJob) {
         )
 
         try {
-            await persistAudioStream(generated.audio.stream, resolvedPath, article, feed)
+            await persistAudioStream(generated.audio.stream, resolvedPath, article, feed, job)
         } finally {
             stopEstimatedProgress()
         }
@@ -609,7 +674,8 @@ async function runEpisodeGenerationJob(job: EpisodeGenerationJob) {
         job.resolve()
     } catch (error) {
         let message = error instanceof Error ? error.message : 'Audio generation failed'
-        markArticleFailed(job.feedId, job.episodeKey, message)
+        if (!isCancelledEpisodeGenerationError(error))
+            markArticleFailed(job.feedId, job.episodeKey, message)
         job.reject(error)
     } finally {
         finishEpisodeGenerationJob(job.key)
@@ -640,19 +706,21 @@ function startAvailableEpisodeGenerationJobs() {
 function cancelQueuedEpisodeGeneration(feedId: number, episodeKey: string) {
     let jobKey = buildEpisodeProgressKey(feedId, episodeKey)
     if (activeEpisodeJobKeys.has(jobKey))
-        return
+        return false
 
     let queuedJob = episodeGenerationJobs.get(jobKey)
     if (!queuedJob)
-        return
+        return false
 
+    queuedJob.cancelled = true
     episodeGenerationJobs.delete(jobKey)
     queuedEpisodeJobKeys = queuedEpisodeJobKeys.filter(key => key != jobKey)
-    queuedJob.reject(new Error(queuedEpisodeCancelledMessage))
+    queuedJob.reject(new Error(episodeGenerationCancelledMessage))
+    return true
 }
 
 function isCancelledEpisodeGenerationError(error: unknown) {
-    return error instanceof Error && error.message == queuedEpisodeCancelledMessage
+    return error instanceof Error && error.message == episodeGenerationCancelledMessage
 }
 
 function hasEpisodeGenerationCapacity() {
@@ -737,34 +805,84 @@ function storeEpisodeTranscript(article: Article, transcript: string) {
         .run()
 }
 
-async function persistAudioStream(stream: ReadableStream<Uint8Array>, outputPath: string, article: Article, feed: Feed) {
+async function persistAudioStream(stream: ReadableStream<Uint8Array>, outputPath: string, article: Article, feed: Feed, job: EpisodeGenerationJob) {
     try {
         await mkdir(podcastDirectory(feed.podcastSlug), { recursive: true })
-        await writeStreamToFile(stream, outputPath)
+        await writeStreamToFile(stream, outputPath, job)
+        throwIfEpisodeGenerationCancelled(job)
         markArticleReady(feed.id, article.episodeKey, buildAudioUrl(feed, article))
     }
-    catch {
-        markArticleFailed(feed.id, article.episodeKey, 'Failed to store generated audio')
+    catch (error) {
+        try {
+            await unlink(outputPath)
+        }
+        catch {
+        }
+
+        if (isCancelledEpisodeGenerationError(error))
+            markArticlePending(feed.id, article.episodeKey)
+        else
+            markArticleFailed(feed.id, article.episodeKey, 'Failed to store generated audio')
+
+        throw error
     }
 }
 
-async function writeStreamToFile(stream: ReadableStream<Uint8Array>, outputPath: string) {
+async function writeStreamToFile(stream: ReadableStream<Uint8Array>, outputPath: string, job: EpisodeGenerationJob) {
     let writer = Bun.file(outputPath).writer()
     let reader = stream.getReader()
     try {
         while (true) {
+            throwIfEpisodeGenerationCancelled(job)
             let read = await reader.read()
             if (read.done)
                 break
+
+            throwIfEpisodeGenerationCancelled(job)
 
             if (read.value)
                 await writer.write(read.value)
         }
         await writer.end()
     }
+    catch (error) {
+        try {
+            await writer.end()
+        }
+        catch {
+        }
+
+        try {
+            await reader.cancel()
+        }
+        catch {
+        }
+
+        throw error
+    }
     finally {
         reader.releaseLock()
     }
+}
+
+function throwIfEpisodeGenerationCancelled(job: EpisodeGenerationJob) {
+    if (job.cancelled)
+        throw new Error(episodeGenerationCancelledMessage)
+}
+
+function markArticlePending(feedId: number, episodeKey: string) {
+    database
+        .update(articlesTable)
+        .set({
+            status: 'pending',
+            errorMessage: null,
+            audioUrl: null,
+            updatedAt: sql`CURRENT_TIMESTAMP`
+        })
+        .where(and(eq(articlesTable.feedId, feedId), eq(articlesTable.episodeKey, episodeKey)))
+        .run()
+
+    clearEpisodeProgress(feedId, episodeKey)
 }
 
 function markArticleGenerating(feedId: number, episodeKey: string, feed: Feed) {
