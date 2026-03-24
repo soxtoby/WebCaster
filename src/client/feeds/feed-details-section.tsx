@@ -9,6 +9,7 @@ type FeedDraft = {
     rssUrl: string
     voice: string
     generationMode: string
+    showArchivedEpisodes: boolean
     contentSource: string
 }
 
@@ -19,6 +20,7 @@ type Episode = {
     publishedAt: string | null
     durationSeconds: number | null
     isDurationEstimated: boolean
+    archived: boolean
     status: string
     errorMessage: string | null
     audioReady: boolean
@@ -42,10 +44,11 @@ export function FeedDetailsSection(props: {
     isEditing: boolean
     podcastUrl: string
     onAddArticle: (url: string) => Promise<void>
+    onEpisodeArchiveChange: (episodeKey: string, archived: boolean) => void
     onCancel: () => void
     onCancelEpisodeGeneration: (episode: Episode) => void
     onDelete: () => void
-    onDraftChange: (field: keyof FeedDraft, value: string) => void
+    onDraftChange: (field: keyof FeedDraft, value: string | boolean) => void
     onGenerateEpisode: (episode: Episode) => void
     onRemoveArticle: (episode: Episode) => void
     onSelectEpisode: (episodeKey: string) => void
@@ -55,6 +58,7 @@ export function FeedDetailsSection(props: {
     removingEpisodeKey: string | null
     selectedEpisodeKey: string | null
     status: string
+    updatingEpisodeArchiveKey: string | null
     updatingEpisodeVoiceKey: string | null
     voiceOptions: VoiceOption[]
 }) {
@@ -66,7 +70,8 @@ export function FeedDetailsSection(props: {
         setArticleUrl('')
     }, [props.feedId, props.draft.contentSource])
 
-    let sortedEpisodes = [...props.episodes].sort((a, b) => {
+    let visibleEpisodes = props.episodes.filter(episode => props.draft.showArchivedEpisodes || !episode.archived)
+    let sortedEpisodes = [...visibleEpisodes].sort((a, b) => {
         if (!a.publishedAt) return 1
         if (!b.publishedAt) return -1
         return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
@@ -138,6 +143,12 @@ export function FeedDetailsSection(props: {
                         value={props.draft.contentSource}
                         options={['feed_article', 'source_page', 'custom']}
                         onChange={value => props.onDraftChange('contentSource', value)}
+                    />
+                    <ToggleField
+                        checked={props.draft.showArchivedEpisodes}
+                        description="Show archived episodes in this feed manager. Archived episodes stay out of the public podcast feed."
+                        label="Show archived episodes"
+                        onChange={value => props.onDraftChange('showArchivedEpisodes', value)}
                     />
                 </div>
 
@@ -225,7 +236,13 @@ export function FeedDetailsSection(props: {
 
                 <div className={classes(episodesListContainerStyle)}>
                     {sortedEpisodes.length === 0 ? (
-                        <div className={classes(emptyEpisodesStyle)}>{isCustomFeed ? 'No articles yet. Add a URL to create the first episode.' : 'No episodes discovered yet.'}</div>
+                        <div className={classes(emptyEpisodesStyle)}>
+                            {props.episodes.length > 0 && !props.draft.showArchivedEpisodes
+                                ? 'Only archived episodes remain. Enable "Show archived episodes" in settings to review them.'
+                                : isCustomFeed
+                                    ? 'No articles yet. Add a URL to create the first episode.'
+                                    : 'No episodes discovered yet.'}
+                        </div>
                     ) : (
                         <table className={classes(episodesTableStyle)}>
                             <thead>
@@ -242,6 +259,7 @@ export function FeedDetailsSection(props: {
                                     let isPlayingEpisode = props.activeEpisodeKey === episode.episodeKey
                                     let isSelectedEpisode = props.selectedEpisodeKey == episode.episodeKey
                                     let isGeneratingEpisode = episode.status == 'generating' || episode.status == 'queued'
+                                    let isUpdatingArchive = props.updatingEpisodeArchiveKey == episode.episodeKey
 
                                     let dateStr = ''
                                     if (episode.publishedAt) {
@@ -253,7 +271,7 @@ export function FeedDetailsSection(props: {
                                     return <Fragment key={episode.episodeKey}>
                                         <tr
                                             aria-expanded={isSelectedEpisode}
-                                            className={classes([trStyle, isSelectedEpisode && activeTrStyle])}
+                                            className={classes([trStyle, episode.archived && archivedTrStyle, isSelectedEpisode && activeTrStyle])}
                                             onClick={() => props.onSelectEpisode(episode.episodeKey)}
                                             onKeyDown={event => {
                                                 if (event.key == 'Enter' || event.key == ' ') {
@@ -271,7 +289,10 @@ export function FeedDetailsSection(props: {
                                                         </svg>
                                                     </span>
                                                     <div className={classes(episodeRowTextStyle)}>
-                                                        <div className={classes(episodeTitleTextStyle)} title={episode.title}>{episode.title}</div>
+                                                        <div className={classes(episodeTitleRowStyle)}>
+                                                            <div className={classes(episodeTitleTextStyle)} title={episode.title}>{episode.title}</div>
+                                                            {episode.archived ? <span className={classes(archivedBadgeStyle)}>Archived</span> : null}
+                                                        </div>
                                                         {episode.errorMessage ? <div className={classes(episodeErrorTextStyle)}>{episode.errorMessage}</div> : null}
                                                     </div>
                                                 </div>
@@ -338,6 +359,7 @@ export function FeedDetailsSection(props: {
                                                                 <span className={classes([statusBadgeStyle, episode.status == 'ready' && completedBadgeStyle])}>
                                                                     {episode.status.replace('_', ' ')}
                                                                 </span>
+                                                                {episode.archived ? <span className={classes(archivedBadgeStyle)}>Archived</span> : null}
                                                                 {isPlayingEpisode ? <span className={classes(episodePlayingPillStyle)}>Now playing</span> : null}
                                                             </div>
                                                         </div>
@@ -348,11 +370,11 @@ export function FeedDetailsSection(props: {
                                                             </a>
                                                             : null}
 
-                                                        <div className={classes(episodeDetailGridStyle)}>
-                                                            <div className={classes(episodeDetailCardStyle)}>
-                                                                <span className={classes(episodeDetailLabelStyle)}>Voice</span>
+                                                        <div className={classes(episodeControlRowStyle)}>
+                                                            <div className={classes(episodeControlItemStyle)}>
+                                                                <span className={classes(episodeControlLabelStyle)}>Voice</span>
                                                                 <button
-                                                                    className={classes([episodeVoiceButtonStyle, episodeVoiceButtonExpandedStyle])}
+                                                                    className={classes([episodeVoiceButtonStyle, episodeVoiceButtonCompactStyle])}
                                                                     commandFor={buildEpisodeVoiceDialogId(episode.episodeKey)}
                                                                     command="show-modal"
                                                                     disabled={props.updatingEpisodeVoiceKey == episode.episodeKey}
@@ -361,14 +383,13 @@ export function FeedDetailsSection(props: {
                                                                 >
                                                                     {props.updatingEpisodeVoiceKey == episode.episodeKey
                                                                         ? 'Saving...'
-                                                                        : <span className={classes([episodeVoiceButtonInnerStyle, !episode.voice && episodeVoiceButtonIconOnlyStyle])}>
+                                                                        : <span className={classes(episodeVoiceButtonInnerStyle)}>
                                                                             <svg className={classes(episodeVoiceIconStyle)} viewBox="0 0 24 24" aria-hidden="true">
                                                                                 <path fill="currentColor" d="M23 9q0 1.725-.612 3.288t-1.663 2.837q-.3.35-.75.375t-.8-.325q-.325-.325-.3-.775t.3-.825q.75-.95 1.163-2.125T20.75 9t-.412-2.425t-1.163-2.1q-.3-.375-.312-.825t.312-.8t.788-.338t.762.363q1.05 1.275 1.663 2.838T23 9m-4.55 0q0 .8-.25 1.538t-.7 1.362q-.275.375-.737.388t-.813-.338q-.325-.325-.337-.787t.212-.888q.15-.275.238-.6T16.15 9t-.088-.675t-.237-.625q-.225-.425-.213-.875t.338-.775q.35-.35.813-.338t.737.388q.45.625.7 1.363T18.45 9M9 13q-1.65 0-2.825-1.175T5 9t1.175-2.825T9 5t2.825 1.175T13 9t-1.175 2.825T9 13m-8 6v-.8q0-.825.425-1.55t1.175-1.1q1.275-.65 2.875-1.1T9 14t3.525.45t2.875 1.1q.75.375 1.175 1.1T17 18.2v.8q0 .825-.587 1.413T15 21H3q-.825 0-1.412-.587T1 19" />
                                                                             </svg>
-                                                                            <span className={classes(episodeVoiceTextStyle)}>{buildEpisodeVoiceSummary(props.voiceOptions, episode.voice) || 'Use feed default voice'}</span>
+                                                                            <span className={classes(episodeVoiceTextStyle)}>{buildEpisodeVoiceSummary(props.voiceOptions, episode.voice) || 'Feed default'}</span>
                                                                         </span>}
                                                                 </button>
-                                                                <span className={classes(episodeDetailHintStyle)}>{episode.voice ? 'Override only for this episode.' : 'Currently using the feed default voice.'}</span>
                                                                 <VoiceSelectorDialog
                                                                     id={buildEpisodeVoiceDialogId(episode.episodeKey)}
                                                                     value={episode.voice || ''}
@@ -377,12 +398,12 @@ export function FeedDetailsSection(props: {
                                                                 />
                                                             </div>
 
-                                                            <div className={classes(episodeDetailCardStyle)}>
-                                                                <span className={classes(episodeDetailLabelStyle)}>Transcript</span>
+                                                            <div className={classes(episodeControlItemStyle)}>
+                                                                <span className={classes(episodeControlLabelStyle)}>Transcript</span>
                                                                 {props.feedId != null
                                                                     ? <>
                                                                         <button
-                                                                            className={classes([transcriptButtonStyle, transcriptButtonExpandedStyle])}
+                                                                            className={classes([transcriptButtonStyle, transcriptButtonCompactStyle])}
                                                                             commandFor={buildEpisodeTranscriptDialogId(episode.episodeKey)}
                                                                             command="show-modal"
                                                                             type="button"
@@ -390,7 +411,6 @@ export function FeedDetailsSection(props: {
                                                                         >
                                                                             Open transcript
                                                                         </button>
-                                                                        <span className={classes(episodeDetailHintStyle)}>Review, edit, or regenerate the narration text.</span>
                                                                         <EpisodeTranscriptDialog
                                                                             feedId={props.feedId}
                                                                             feedTitle={props.draft.name || 'Unnamed Feed'}
@@ -399,6 +419,23 @@ export function FeedDetailsSection(props: {
                                                                     </>
                                                                     : null}
                                                             </div>
+
+                                                            <div className={classes(episodeControlItemStyle)}>
+                                                                <span className={classes(episodeControlLabelStyle)}>Visibility</span>
+                                                                <button
+                                                                    className={classes([playButtonStyle, detailActionButtonStyle, episodeActionCompactStyle, episode.archived ? restoreEpisodeButtonStyle : archiveEpisodeButtonStyle])}
+                                                                    disabled={isUpdatingArchive}
+                                                                    onClick={() => props.onEpisodeArchiveChange(episode.episodeKey, !episode.archived)}
+                                                                    type="button"
+                                                                >
+                                                                    {isUpdatingArchive
+                                                                        ? (episode.archived ? 'Restoring...' : 'Archiving...')
+                                                                        : episode.archived ? 'Unarchive episode' : 'Archive episode'}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className={classes(episodeDetailGridStyle)}>
 
                                                             <div className={classes([episodeDetailCardStyle, episodeDetailAudioCardStyle])}>
                                                                 <span className={classes(episodeDetailLabelStyle)}>Audio</span>
@@ -451,6 +488,7 @@ export function FeedDetailsSection(props: {
                                                                             : 'Generate narrated audio for this episode.'}
                                                                 </span>
                                                             </div>
+
                                                         </div>
                                                     </div>
                                                 </td>
@@ -609,6 +647,31 @@ function TextSelectField(props: {
     </label>
 }
 
+function ToggleField(props: {
+    checked: boolean
+    description: string
+    label: string
+    onChange: (value: boolean) => void
+}) {
+    return <label className={classes(toggleFieldStyle)}>
+        <div className={classes(toggleCopyStyle)}>
+            <span className={classes(fieldLabelStyle)}>{props.label}</span>
+            <span className={classes(toggleDescriptionStyle)}>{props.description}</span>
+        </div>
+        <span className={classes(toggleControlWrapStyle)}>
+            <input
+                checked={props.checked}
+                className={classes(toggleInputStyle)}
+                onChange={(event: ChangeEvent<HTMLInputElement>) => props.onChange(event.target.checked)}
+                type="checkbox"
+            />
+            <span className={classes([toggleTrackStyle, props.checked && toggleTrackCheckedStyle])} aria-hidden="true">
+                <span className={classes([toggleThumbStyle, props.checked && toggleThumbCheckedStyle])} />
+            </span>
+        </span>
+    </label>
+}
+
 let panelStyle = style('panel', {
     backgroundColor: 'var(--panel)',
     border: '1px solid var(--border)',
@@ -695,6 +758,76 @@ let settingsGridStyle = style('settingsGrid', {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
     gap: 16
+})
+
+let toggleFieldStyle = style('toggleField', {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+    minHeight: 54,
+    padding: '12px 14px',
+    borderRadius: 12,
+    border: '1px solid color-mix(in srgb, var(--border) 90%, transparent)',
+    backgroundColor: 'color-mix(in srgb, var(--bg) 76%, white)'
+})
+
+let toggleCopyStyle = style('toggleCopy', {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+    minWidth: 0,
+    flex: 1
+})
+
+let toggleDescriptionStyle = style('toggleDescription', {
+    fontSize: 12,
+    lineHeight: 1.45,
+    color: 'var(--muted)'
+})
+
+let toggleControlWrapStyle = style('toggleControlWrap', {
+    position: 'relative',
+    display: 'inline-flex',
+    alignItems: 'center',
+    flexShrink: 0
+})
+
+let toggleInputStyle = style('toggleInput', {
+    position: 'absolute',
+    inset: 0,
+    opacity: 0,
+    cursor: 'pointer'
+})
+
+let toggleTrackStyle = style('toggleTrack', {
+    width: 48,
+    height: 28,
+    borderRadius: 999,
+    backgroundColor: 'color-mix(in srgb, var(--muted) 22%, transparent)',
+    border: '1px solid color-mix(in srgb, var(--border) 88%, transparent)',
+    padding: 3,
+    display: 'inline-flex',
+    alignItems: 'center',
+    transition: 'background-color 0.15s ease, border-color 0.15s ease'
+})
+
+let toggleTrackCheckedStyle = style('toggleTrackChecked', {
+    backgroundColor: 'color-mix(in srgb, var(--accent) 20%, white)',
+    borderColor: 'color-mix(in srgb, var(--accent) 40%, var(--border))'
+})
+
+let toggleThumbStyle = style('toggleThumb', {
+    width: 20,
+    height: 20,
+    borderRadius: 999,
+    backgroundColor: 'white',
+    boxShadow: '0 2px 6px rgba(15, 23, 42, 0.18)',
+    transition: 'transform 0.15s ease'
+})
+
+let toggleThumbCheckedStyle = style('toggleThumbChecked', {
+    transform: 'translateX(20px)'
 })
 
 let settingsActionsStyle = style('settingsActions', {
@@ -911,6 +1044,10 @@ let activeTrStyle = style('activeTr', {
     }
 })
 
+let archivedTrStyle = style('archivedTr', {
+    opacity: 0.82
+})
+
 let tdStyle = style('td', {
     padding: '12px 20px',
     fontSize: 13,
@@ -961,6 +1098,15 @@ let transcriptButtonExpandedStyle = style('transcriptButtonExpanded', {
     width: '100%',
     minHeight: 38,
     borderRadius: 10,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center'
+})
+
+let transcriptButtonCompactStyle = style('transcriptButtonCompact', {
+    width: '100%',
+    minHeight: 34,
+    borderRadius: 8,
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center'
@@ -1059,6 +1205,14 @@ let episodeVoiceButtonExpandedStyle = style('episodeVoiceButtonExpanded', {
     backgroundColor: 'var(--panel)'
 })
 
+let episodeVoiceButtonCompactStyle = style('episodeVoiceButtonCompact', {
+    minWidth: 0,
+    width: '100%',
+    minHeight: 34,
+    padding: '6px 10px',
+    backgroundColor: 'var(--panel)'
+})
+
 let episodeVoiceButtonInnerStyle = style('episodeVoiceButtonInner', {
     display: 'flex',
     alignItems: 'center',
@@ -1091,6 +1245,13 @@ let episodeTitleTextStyle = style('episodeTitle', {
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis'
+})
+
+let episodeTitleRowStyle = style('episodeTitleRow', {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 0
 })
 
 let episodeRowSummaryStyle = style('episodeRowSummary', {
@@ -1150,6 +1311,19 @@ let statusBadgeStyle = style('statusBadge', {
     backgroundColor: 'color-mix(in srgb, var(--muted) 15%, transparent)',
     color: 'var(--text)',
     textTransform: 'uppercase'
+})
+
+let archivedBadgeStyle = style('archivedBadge', {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '3px 9px',
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: '0.03em',
+    textTransform: 'uppercase',
+    color: '#92400e',
+    backgroundColor: 'color-mix(in srgb, #f59e0b 18%, white)'
 })
 
 let completedBadgeStyle = style('completedBadge', {
@@ -1218,6 +1392,13 @@ let detailActionButtonStyle = style('detailActionButton', {
     padding: '8px 14px'
 })
 
+let episodeActionCompactStyle = style('episodeActionCompact', {
+    width: '100%',
+    minHeight: 34,
+    borderRadius: 8,
+    padding: '6px 10px'
+})
+
 let generateAudioButtonStyle = style('generateAudioButton', {
     borderColor: 'color-mix(in srgb, var(--accent) 45%, var(--border))',
     color: 'var(--accent)'
@@ -1230,6 +1411,28 @@ let cancelAudioButtonStyle = style('cancelAudioButton', {
         '&:hover': {
             borderColor: 'var(--danger)',
             color: 'var(--danger)'
+        }
+    }
+})
+
+let archiveEpisodeButtonStyle = style('archiveEpisodeButton', {
+    borderColor: 'color-mix(in srgb, #f59e0b 45%, var(--border))',
+    color: '#b45309',
+    $: {
+        '&:hover': {
+            borderColor: '#f59e0b',
+            color: '#92400e'
+        }
+    }
+})
+
+let restoreEpisodeButtonStyle = style('restoreEpisodeButton', {
+    borderColor: 'color-mix(in srgb, #10b981 40%, var(--border))',
+    color: '#047857',
+    $: {
+        '&:hover': {
+            borderColor: '#10b981',
+            color: '#065f46'
         }
     }
 })
@@ -1402,6 +1605,33 @@ let episodeSourceLinkStyle = style('episodeSourceLink', {
             textDecoration: 'underline'
         }
     }
+})
+
+let episodeControlRowStyle = style('episodeControlRow', {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1.35fr) minmax(180px, 0.8fr) minmax(180px, 0.9fr)',
+    gap: 12,
+    alignItems: 'end',
+    $: {
+        '@media (max-width: 880px)': {
+            gridTemplateColumns: '1fr'
+        }
+    }
+})
+
+let episodeControlItemStyle = style('episodeControlItem', {
+    minWidth: 0,
+    display: 'grid',
+    gap: 6,
+    alignContent: 'start'
+})
+
+let episodeControlLabelStyle = style('episodeControlLabel', {
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: '0.05em',
+    textTransform: 'uppercase',
+    color: 'var(--muted)'
 })
 
 let episodeDetailGridStyle = style('episodeDetailGrid', {

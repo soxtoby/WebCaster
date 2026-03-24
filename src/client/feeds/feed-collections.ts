@@ -20,6 +20,7 @@ export const feedCollection = createCollection(queryCollectionOptions<Feed>({
             rssUrl: feed.rssUrl,
             voice: feed.voice,
             generationMode: feed.generationMode,
+            showArchivedEpisodes: feed.showArchivedEpisodes,
             contentSource: feed.contentSource
         })
     },
@@ -31,6 +32,7 @@ export const feedCollection = createCollection(queryCollectionOptions<Feed>({
             rssUrl: modified.rssUrl,
             voice: modified.voice,
             generationMode: modified.generationMode,
+            showArchivedEpisodes: modified.showArchivedEpisodes,
             contentSource: modified.contentSource
         })
     },

@@ -1,4 +1,4 @@
-import { check, type InferOutput, integer, minLength, minValue, number, object, pipe, string, trim, url } from "valibot"
+import { boolean, check, type InferOutput, integer, minLength, minValue, number, object, pipe, string, trim, url } from "valibot"
 
 export type FeedInput = InferOutput<typeof FeedInput>
 export const FeedInput = pipe(
@@ -15,6 +15,7 @@ export const FeedInput = pipe(
             trim(),
             check((value) => value == 'on_demand' || value == 'every_episode', 'Generation mode must be on_demand or every_episode')
         ),
+        showArchivedEpisodes: boolean(),
         contentSource: pipe(
             string('Content source is required'),
             trim(),
@@ -69,6 +70,12 @@ export type EpisodeActionInput = InferOutput<typeof EpisodeActionInput>
 export const EpisodeActionInput = object({
     ...FeedIdInput.entries,
     episodeKey: pipe(string('Episode key is required'), trim(), minLength(1, 'Episode key is required'))
+})
+
+export type EpisodeArchiveInput = InferOutput<typeof EpisodeArchiveInput>
+export const EpisodeArchiveInput = object({
+    ...EpisodeActionInput.entries,
+    archived: boolean()
 })
 
 export type EpisodeTranscriptUpdateInput = InferOutput<typeof EpisodeTranscriptUpdateInput>

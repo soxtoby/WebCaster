@@ -33,6 +33,7 @@ export function createFeed(input: FeedInput & { description?: string | null; ima
             voice: input.voice,
             generationMode: input.generationMode,
             contentSource: input.contentSource,
+            showArchivedEpisodes: input.showArchivedEpisodes,
             podcastSlug
         })
         .returning()
@@ -55,6 +56,7 @@ export function updateFeedById(id: number, input: FeedInput & { description?: st
             voice: input.voice,
             generationMode: input.generationMode,
             contentSource: input.contentSource,
+            showArchivedEpisodes: input.showArchivedEpisodes,
             updatedAt: sql`CURRENT_TIMESTAMP`
         })
         .where(eq(feedsTable.id, id))

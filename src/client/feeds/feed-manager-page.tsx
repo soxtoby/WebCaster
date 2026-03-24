@@ -13,6 +13,7 @@ type FeedDraft = {
     rssUrl: string
     voice: string
     generationMode: string
+    showArchivedEpisodes: boolean
     contentSource: string
 }
 
@@ -23,6 +24,7 @@ type FeedEpisode = {
     publishedAt: string | null
     durationSeconds: number | null
     isDurationEstimated: boolean
+    archived: boolean
     status: string
     errorMessage: string | null
     audioReady: boolean
@@ -38,7 +40,7 @@ type FeedEpisode = {
 export function FeedManagerPage() {
     let [selectedFeedId, setSelectedFeedId] = useState<number | null>(null)
     let [isCreating, setIsCreating] = useState(false)
-    let [draft, setDraft] = useState<FeedDraft>({ name: '', rssUrl: '', voice: '', generationMode: 'on_demand', contentSource: 'feed_article' })
+    let [draft, setDraft] = useState<FeedDraft>({ name: '', rssUrl: '', voice: '', generationMode: 'on_demand', showArchivedEpisodes: false, contentSource: 'feed_article' })
     let [error, setError] = useState('')
     let [status, setStatus] = useState('')
     let [isAddingArticle, setIsAddingArticle] = useState(false)
@@ -49,6 +51,7 @@ export function FeedManagerPage() {
     let [activeEpisodeKey, setActiveEpisodeKey] = useState<string | null>(null)
     let [activeEpisodeAudioUrl, setActiveEpisodeAudioUrl] = useState('')
     let [updatingEpisodeVoiceKey, setUpdatingEpisodeVoiceKey] = useState<string | null>(null)
+    let [updatingEpisodeArchiveKey, setUpdatingEpisodeArchiveKey] = useState<string | null>(null)
 
     let [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>([])
 
@@ -94,10 +97,11 @@ export function FeedManagerPage() {
                 rssUrl: selectedFeed.rssUrl,
                 voice: selectedFeed.voice,
                 generationMode: selectedFeed.generationMode,
+                showArchivedEpisodes: selectedFeed.showArchivedEpisodes,
                 contentSource: selectedFeed.contentSource
             })
         } else {
-            setDraft({ name: '', rssUrl: '', voice: getFallbackVoiceId(voiceOptions), generationMode: 'on_demand', contentSource: 'feed_article' })
+            setDraft({ name: '', rssUrl: '', voice: getFallbackVoiceId(voiceOptions), generationMode: 'on_demand', showArchivedEpisodes: false, contentSource: 'feed_article' })
         }
     }, [selectedFeed, voiceOptions])
 
@@ -125,6 +129,22 @@ export function FeedManagerPage() {
     }, [episodes, selectedEpisodeKey, activeEpisodeKey])
 
     useEffect(() => {
+        if (draft.showArchivedEpisodes || !selectedEpisodeKey)
+            return
+
+        let selectedEpisode = episodes.find(episode => episode.episodeKey == selectedEpisodeKey)
+        if (!selectedEpisode?.archived)
+            return
+
+        setSelectedEpisodeKey(null)
+
+        if (activeEpisodeKey == selectedEpisodeKey) {
+            setActiveEpisodeKey(null)
+            setActiveEpisodeAudioUrl('')
+        }
+    }, [draft.showArchivedEpisodes, episodes, selectedEpisodeKey, activeEpisodeKey])
+
+    useEffect(() => {
         if (selectedFeedId == null)
             return
 
@@ -143,6 +163,50 @@ export function FeedManagerPage() {
     useEffect(() => {
         void loadVoices()
     }, [])
+
+    let feedDetailsProps = {
+        activeEpisodeAudioUrl,
+        activeEpisodeKey,
+        draft,
+        error,
+        feedId: selectedFeed?.id ?? null,
+        isEditing: selectedFeed != null,
+        podcastUrl,
+        episodes,
+        onCancel: () => {
+            setSelectedFeedId(null)
+            setIsCreating(false)
+            setDraft({ name: '', rssUrl: '', voice: getFallbackVoiceId(resolvedVoiceOptions), generationMode: 'on_demand', showArchivedEpisodes: false, contentSource: 'feed_article' })
+            setStatus('')
+            setError('')
+        },
+        isAddingArticle,
+        onDelete: () => removeFeed(),
+        onDraftChange: (field: keyof FeedDraft, value: string | boolean) => {
+            setDraft(current => ({ ...current, [field]: value }))
+        },
+        onAddArticle: addArticleToFeed,
+        onEpisodeArchiveChange: (episodeKey: string, archived: boolean) => void updateEpisodeArchived(episodeKey, archived),
+        onCancelEpisodeGeneration: (episode: FeedEpisode) => void cancelEpisodeAudioGeneration(episode),
+        onGenerateEpisode: (episode: FeedEpisode) => void generateEpisodeAudio(episode),
+        onRemoveArticle: (episode: FeedEpisode) => void removeArticleFromFeed(episode),
+        onSelectEpisode: (episodeKey: string) => {
+            setSelectedEpisodeKey(current => current == episodeKey ? null : episodeKey)
+        },
+        onPlayEpisode: (episode: FeedEpisode) => {
+            setSelectedEpisodeKey(episode.episodeKey)
+            setActiveEpisodeKey(episode.episodeKey)
+            setActiveEpisodeAudioUrl(episode.audioUrl)
+        },
+        onEpisodeVoiceChange: (episodeKey: string, voice: string) => void updateEpisodeVoice(episodeKey, voice),
+        onSubmit: () => saveFeed(),
+        removingEpisodeKey,
+        selectedEpisodeKey,
+        status,
+        updatingEpisodeArchiveKey,
+        updatingEpisodeVoiceKey,
+        voiceOptions: resolvedVoiceOptions
+    } as any
 
     return <div className={classes(pageStyle)}>
         <header className={classes(headerStyle)}>
@@ -205,7 +269,7 @@ export function FeedManagerPage() {
                                 setIsCreating(true)
                                 setStatus('')
                                 setError('')
-                                setDraft({ name: '', rssUrl: '', voice: getFallbackVoiceId(resolvedVoiceOptions), generationMode: 'on_demand', contentSource: 'feed_article' })
+                                setDraft({ name: '', rssUrl: '', voice: getFallbackVoiceId(resolvedVoiceOptions), generationMode: 'on_demand', showArchivedEpisodes: false, contentSource: 'feed_article' })
                             }}
                             type="button"
                         >
@@ -216,47 +280,7 @@ export function FeedManagerPage() {
             </section>
 
             {selectedFeed || isCreating
-                ? <FeedDetailsSection
-                    activeEpisodeAudioUrl={activeEpisodeAudioUrl}
-                    activeEpisodeKey={activeEpisodeKey}
-                    draft={draft}
-                    error={error}
-                    feedId={selectedFeed?.id ?? null}
-                    isEditing={selectedFeed != null}
-                    podcastUrl={podcastUrl}
-                    episodes={episodes}
-                    onCancel={() => {
-                        setSelectedFeedId(null)
-                        setIsCreating(false)
-                        setDraft({ name: '', rssUrl: '', voice: getFallbackVoiceId(resolvedVoiceOptions), generationMode: 'on_demand', contentSource: 'feed_article' })
-                        setStatus('')
-                        setError('')
-                    }}
-                    isAddingArticle={isAddingArticle}
-                    onDelete={() => removeFeed()}
-                    onDraftChange={(field, value) => {
-                        setDraft(current => ({ ...current, [field]: value }))
-                    }}
-                    onAddArticle={addArticleToFeed}
-                    onCancelEpisodeGeneration={episode => void cancelEpisodeAudioGeneration(episode)}
-                    onGenerateEpisode={episode => void generateEpisodeAudio(episode)}
-                    onRemoveArticle={episode => void removeArticleFromFeed(episode)}
-                    onSelectEpisode={episodeKey => {
-                        setSelectedEpisodeKey(current => current == episodeKey ? null : episodeKey)
-                    }}
-                    onPlayEpisode={episode => {
-                        setSelectedEpisodeKey(episode.episodeKey)
-                        setActiveEpisodeKey(episode.episodeKey)
-                        setActiveEpisodeAudioUrl(episode.audioUrl)
-                    }}
-                    onEpisodeVoiceChange={(episodeKey, voice) => void updateEpisodeVoice(episodeKey, voice)}
-                    onSubmit={() => saveFeed()}
-                    removingEpisodeKey={removingEpisodeKey}
-                    selectedEpisodeKey={selectedEpisodeKey}
-                    status={status}
-                    updatingEpisodeVoiceKey={updatingEpisodeVoiceKey}
-                    voiceOptions={resolvedVoiceOptions}
-                />
+                ? <FeedDetailsSection {...feedDetailsProps} />
                 : null}
         </div>
 
@@ -293,6 +317,7 @@ export function FeedManagerPage() {
                 f.rssUrl = rssUrl
                 f.voice = draft.voice
                 f.generationMode = draft.generationMode
+                f.showArchivedEpisodes = draft.showArchivedEpisodes
                 f.contentSource = draft.contentSource
                 f.updatedAt = new Date().toISOString()
             })
@@ -306,6 +331,7 @@ export function FeedManagerPage() {
                 description: null,
                 imageUrl: null,
                 podcastSlug: '',
+                showArchivedEpisodes: draft.showArchivedEpisodes,
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString()
             }
@@ -477,6 +503,39 @@ export function FeedManagerPage() {
         }
         finally {
             setUpdatingEpisodeVoiceKey(null)
+        }
+    }
+
+    async function updateEpisodeArchived(episodeKey: string, archived: boolean) {
+        if (!selectedFeed)
+            return
+
+        setError('')
+        setStatus('')
+        setUpdatingEpisodeArchiveKey(episodeKey)
+
+        try {
+            await api.feeds.setEpisodeArchive.mutate({ id: selectedFeed.id, episodeKey, archived })
+            setStatus(archived ? 'Episode archived' : 'Episode restored')
+
+            if (archived && !selectedFeed.showArchivedEpisodes) {
+                if (selectedEpisodeKey == episodeKey)
+                    setSelectedEpisodeKey(null)
+
+                if (activeEpisodeKey == episodeKey) {
+                    setActiveEpisodeKey(null)
+                    setActiveEpisodeAudioUrl('')
+                }
+            }
+
+            await loadEpisodes(selectedFeed.id)
+        }
+        catch (cause) {
+            let message = cause instanceof Error ? cause.message : 'Failed to update archived state'
+            setError(message)
+        }
+        finally {
+            setUpdatingEpisodeArchiveKey(null)
         }
     }
 

@@ -39,6 +39,7 @@ export const feedsTable = sqliteTable('feeds', {
     voice: text('voice').notNull().references(() => ttsVoicesTable.id),
     generationMode: text('generation_mode').notNull().default('on_demand'),
     contentSource: text('content_source').notNull().default('feed_article'),
+    showArchivedEpisodes: integer('show_archived_episodes', { mode: 'boolean' }).notNull().default(false),
     podcastSlug: text('podcast_slug').notNull(),
     createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
     updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`)
@@ -59,6 +60,7 @@ export const articlesTable = sqliteTable('articles', {
     transcript: text('transcript'),
     durationSeconds: integer('duration_seconds'),
     voice: text('voice').references(() => ttsVoicesTable.id),
+    archived: integer('archived', { mode: 'boolean' }).notNull().default(false),
     audioUrl: text('audio_url'),
     status: text('status').notNull().default('pending'),
     errorMessage: text('error_message'),

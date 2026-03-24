@@ -18,6 +18,7 @@ type EpisodeView = {
     publishedAt: string | null
     durationSeconds: number | null
     isDurationEstimated: boolean
+    archived: boolean
     status: string
     errorMessage: string | null
     voice: string | null
@@ -136,6 +137,7 @@ export async function listFeedEpisodes(feedId: number): Promise<EpisodeView[]> {
             content: articlesTable.content,
             transcript: articlesTable.transcript,
             durationSeconds: articlesTable.durationSeconds,
+            archived: articlesTable.archived,
             voice: articlesTable.voice,
             status: articlesTable.status,
             errorMessage: articlesTable.errorMessage
@@ -169,6 +171,7 @@ export async function listFeedEpisodes(feedId: number): Promise<EpisodeView[]> {
             publishedAt: row.publishedAt,
             durationSeconds: duration.durationSeconds,
             isDurationEstimated: duration.isDurationEstimated,
+            archived: row.archived,
             status: row.status,
             errorMessage: row.errorMessage,
             voice: row.voice,
@@ -188,7 +191,7 @@ export async function buildPodcastFeedXml(feed: Feed) {
     let episodes = database
         .select()
         .from(articlesTable)
-        .where(eq(articlesTable.feedId, feed.id))
+        .where(and(eq(articlesTable.feedId, feed.id), eq(articlesTable.archived, false)))
         .orderBy(desc(articlesTable.publishedAt), desc(articlesTable.createdAt))
         .all()
 
@@ -326,6 +329,41 @@ export async function setEpisodeVoiceOverride(feedId: number, episodeKey: string
     }
     catch {
     }
+
+    return { updated: true as const }
+}
+
+export async function setEpisodeArchived(feedId: number, episodeKey: string, archived: boolean) {
+    let feed = database.select().from(feedsTable).where(eq(feedsTable.id, feedId)).get()
+    if (!feed)
+        return { updated: false as const, reason: 'feed_not_found' as const }
+
+    let article = findArticleByEpisodeKey(feed.id, episodeKey)
+    if (!article)
+        return { updated: false as const, reason: 'episode_not_found' as const }
+
+    if (archived) {
+        let jobKey = buildEpisodeProgressKey(feed.id, article.episodeKey)
+        let activeJob = episodeGenerationJobs.get(jobKey)
+
+        if (activeJob)
+            activeJob.cancelled = true
+
+        let didCancelQueued = cancelQueuedEpisodeGeneration(feed.id, article.episodeKey)
+        if (didCancelQueued || article.status == 'queued' || article.status == 'generating')
+            markArticlePending(feed.id, article.episodeKey)
+
+        clearEpisodeProgress(feed.id, article.episodeKey)
+    }
+
+    database
+        .update(articlesTable)
+        .set({
+            archived,
+            updatedAt: sql`CURRENT_TIMESTAMP`
+        })
+        .where(and(eq(articlesTable.feedId, feed.id), eq(articlesTable.episodeKey, article.episodeKey)))
+        .run()
 
     return { updated: true as const }
 }
@@ -480,6 +518,7 @@ async function syncFeed(feed: Feed, limit: number) {
             .from(articlesTable)
             .where(and(
                 eq(articlesTable.feedId, feed.id),
+                eq(articlesTable.archived, false),
                 eq(articlesTable.generationMode, 'every_episode'),
                 inArray(articlesTable.status, ['pending', 'failed', 'queued'])
             ))
