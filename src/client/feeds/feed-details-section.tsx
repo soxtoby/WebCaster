@@ -237,8 +237,8 @@ export function FeedDetailsSection(props: {
                     />
                     <ToggleField
                         checked={draft.showArchivedEpisodes}
-                        description="Show archived episodes in this feed manager. Archived episodes stay out of the public podcast feed."
-                        label="Show archived episodes"
+                        description="Show archived episodes"
+                        label="Archived episodes"
                         onChange={value => updateDraft('showArchivedEpisodes', value)}
                     />
                 </div>
@@ -1011,20 +1011,20 @@ function ToggleField(props: {
     label: string
     onChange: (value: boolean) => void
 }) {
-    return <label className={classes(toggleFieldStyle)}>
-        <div className={classes(toggleCopyStyle)}>
-            <span className={classes(fieldLabelStyle)}>{props.label}</span>
-            <span className={classes(toggleDescriptionStyle)}>{props.description}</span>
-        </div>
-        <span className={classes(toggleControlWrapStyle)}>
-            <input
-                checked={props.checked}
-                className={classes(toggleInputStyle)}
-                onChange={(event: ChangeEvent<HTMLInputElement>) => props.onChange(event.target.checked)}
-                type="checkbox"
-            />
-            <span className={classes([toggleTrackStyle, props.checked && toggleTrackCheckedStyle])} aria-hidden="true">
-                <span className={classes([toggleThumbStyle, props.checked && toggleThumbCheckedStyle])} />
+    return <label className={classes(fieldOuterStyle)}>
+        <span className={classes(fieldLabelStyle)}>{props.label}</span>
+        <span className={classes(toggleFieldStyle)}>
+            {props.description ? <span className={classes(toggleDescriptionStyle)}>{props.description}</span> : <span className={classes(toggleSpacerStyle)} />}
+            <span className={classes(toggleControlWrapStyle)}>
+                <input
+                    checked={props.checked}
+                    className={classes(toggleInputStyle)}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => props.onChange(event.target.checked)}
+                    type="checkbox"
+                />
+                <span className={classes([toggleTrackStyle, props.checked && toggleTrackCheckedStyle])} aria-hidden="true">
+                    <span className={classes([toggleThumbStyle, props.checked && toggleThumbCheckedStyle])} />
+                </span>
             </span>
         </span>
     </label>
@@ -1122,26 +1122,25 @@ let toggleFieldStyle = style('toggleField', {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 16,
-    minHeight: 54,
-    padding: '12px 14px',
-    borderRadius: 12,
-    border: '1px solid color-mix(in srgb, var(--border) 90%, transparent)',
-    backgroundColor: 'color-mix(in srgb, var(--bg) 76%, white)'
-})
-
-let toggleCopyStyle = style('toggleCopy', {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 4,
-    minWidth: 0,
-    flex: 1
+    gap: 12,
+    minHeight: 34,
+    padding: '6px 12px',
+    borderRadius: 6,
+    border: '1px solid var(--border)',
+    backgroundColor: 'var(--bg)'
 })
 
 let toggleDescriptionStyle = style('toggleDescription', {
     fontSize: 12,
-    lineHeight: 1.45,
-    color: 'var(--muted)'
+    lineHeight: 1.3,
+    color: 'var(--muted)',
+    minWidth: 0,
+    flex: 1
+})
+
+let toggleSpacerStyle = style('toggleSpacer', {
+    flex: 1,
+    minWidth: 0
 })
 
 let toggleControlWrapStyle = style('toggleControlWrap', {
@@ -1159,12 +1158,12 @@ let toggleInputStyle = style('toggleInput', {
 })
 
 let toggleTrackStyle = style('toggleTrack', {
-    width: 48,
-    height: 28,
+    width: 42,
+    height: 24,
     borderRadius: 999,
     backgroundColor: 'color-mix(in srgb, var(--muted) 22%, transparent)',
     border: '1px solid color-mix(in srgb, var(--border) 88%, transparent)',
-    padding: 3,
+    padding: 2,
     display: 'inline-flex',
     alignItems: 'center',
     transition: 'background-color 0.15s ease, border-color 0.15s ease'
@@ -1176,8 +1175,8 @@ let toggleTrackCheckedStyle = style('toggleTrackChecked', {
 })
 
 let toggleThumbStyle = style('toggleThumb', {
-    width: 20,
-    height: 20,
+    width: 18,
+    height: 18,
     borderRadius: 999,
     backgroundColor: 'white',
     boxShadow: '0 2px 6px rgba(15, 23, 42, 0.18)',
@@ -1185,7 +1184,7 @@ let toggleThumbStyle = style('toggleThumb', {
 })
 
 let toggleThumbCheckedStyle = style('toggleThumbChecked', {
-    transform: 'translateX(20px)'
+    transform: 'translateX(18px)'
 })
 
 let settingsActionsStyle = style('settingsActions', {
