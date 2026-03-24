@@ -1,13 +1,15 @@
 # Changelog
 
-## Unreleased
+## V1.0.6
 
 ### Added
 - Custom feeds where articles are added manually.
-- Setting feed generation mode to every episode only generates audio automatically for new articles.
 - Changing episode play button to a generate button when audio hasn't been generated yet.
 - Expandable episodes with more details and options.
 - Option to archive an episode so it doesn't appear in the podcast feed.
+
+### Fixed
+- Setting feed generation mode to "every episode" doesn't immediately generate audio for existing episodes.
 
 ## V1.0.5
 
