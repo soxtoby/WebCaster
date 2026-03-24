@@ -1,10 +1,12 @@
-import { type ChangeEvent, Fragment, useEffect, useState } from "react"
+import { type ChangeEvent, Fragment, useEffect, useMemo, useState } from "react"
 import { classes, style } from "stylemap"
+import type { Feed } from "../../server/db/schema"
+import { api } from "../api"
 import { buildEpisodeTranscriptDialogId, EpisodeTranscriptDialog } from "./episode-transcript-dialog"
 import { VoiceSelectorDialog } from "./voice-selector-dialog"
 import { VoiceSelectorField, type VoiceOption } from "./voice-selector-field"
 
-type FeedDraft = {
+export type FeedDraft = {
     name: string
     rssUrl: string
     voice: string
@@ -34,43 +36,132 @@ type Episode = {
 }
 
 export function FeedDetailsSection(props: {
-    activeEpisodeAudioUrl: string
-    activeEpisodeKey: string | null
-    draft: FeedDraft
-    episodes: Episode[]
-    error: string
-    feedId: number | null
-    isAddingArticle: boolean
-    isEditing: boolean
-    podcastUrl: string
-    onAddArticle: (url: string) => Promise<void>
-    onEpisodeArchiveChange: (episodeKey: string, archived: boolean) => void
+    feed: Feed | null
     onCancel: () => void
-    onCancelEpisodeGeneration: (episode: Episode) => void
     onDelete: () => void
-    onDraftChange: (field: keyof FeedDraft, value: string | boolean) => void
-    onGenerateEpisode: (episode: Episode) => void
-    onRemoveArticle: (episode: Episode) => void
-    onSelectEpisode: (episodeKey: string) => void
-    onPlayEpisode: (episode: Episode) => void
-    onEpisodeVoiceChange: (episodeKey: string, voice: string) => void
-    onSubmit: () => void
-    removingEpisodeKey: string | null
-    selectedEpisodeKey: string | null
-    status: string
-    updatingEpisodeArchiveKey: string | null
-    updatingEpisodeVoiceKey: string | null
+    onSave: (draft: FeedDraft) => Promise<void>
     voiceOptions: VoiceOption[]
 }) {
-    let [isSettingsExpanded, setIsSettingsExpanded] = useState(!props.isEditing)
+    let isEditing = props.feed != null
+    let feedId = props.feed?.id ?? null
+    let [draft, setDraft] = useState(() => buildInitialDraft(props.feed, props.voiceOptions))
+    let [error, setError] = useState('')
+    let [status, setStatus] = useState('')
+    let [podcastUrl, setPodcastUrl] = useState('')
+    let [episodes, setEpisodes] = useState<Episode[]>([])
+    let [selectedEpisodeKey, setSelectedEpisodeKey] = useState<string | null>(null)
+    let [activeEpisodeKey, setActiveEpisodeKey] = useState<string | null>(null)
+    let [activeEpisodeAudioUrl, setActiveEpisodeAudioUrl] = useState('')
+    let [isAddingArticle, setIsAddingArticle] = useState(false)
+    let [removingEpisodeKey, setRemovingEpisodeKey] = useState<string | null>(null)
+    let [updatingEpisodeVoiceKey, setUpdatingEpisodeVoiceKey] = useState<string | null>(null)
+    let [updatingEpisodeArchiveKey, setUpdatingEpisodeArchiveKey] = useState<string | null>(null)
+    let [isSettingsExpanded, setIsSettingsExpanded] = useState(!isEditing)
     let [articleUrl, setArticleUrl] = useState('')
-    let isCustomFeed = props.draft.contentSource == 'custom'
+    let resolvedVoiceOptions = useMemo(() => {
+        let options = [...props.voiceOptions]
+
+        if (draft.voice && !options.some(option => option.id == draft.voice)) {
+            options.unshift({
+                id: draft.voice,
+                name: 'Saved voice',
+                description: 'Saved voice',
+                gender: 'unknown',
+                provider: 'saved'
+            })
+        }
+
+        return options
+    }, [props.voiceOptions, draft.voice])
+    let isCustomFeed = draft.contentSource == 'custom'
 
     useEffect(() => {
         setArticleUrl('')
-    }, [props.feedId, props.draft.contentSource])
+    }, [feedId, draft.contentSource])
 
-    let visibleEpisodes = props.episodes.filter(episode => props.draft.showArchivedEpisodes || !episode.archived)
+    useEffect(() => {
+        setDraft(buildInitialDraft(props.feed, props.voiceOptions))
+        setError('')
+        setStatus('')
+        setPodcastUrl('')
+        setEpisodes([])
+        setSelectedEpisodeKey(null)
+        setActiveEpisodeKey(null)
+        setActiveEpisodeAudioUrl('')
+        setIsAddingArticle(false)
+        setRemovingEpisodeKey(null)
+        setUpdatingEpisodeVoiceKey(null)
+        setUpdatingEpisodeArchiveKey(null)
+        setIsSettingsExpanded(!isEditing)
+    }, [props.feed?.id, isEditing])
+
+    useEffect(() => {
+        if (draft.voice)
+            return
+
+        let fallbackVoiceId = getFallbackVoiceId(props.voiceOptions)
+        if (!fallbackVoiceId)
+            return
+
+        setDraft(current => current.voice ? current : { ...current, voice: fallbackVoiceId })
+    }, [props.voiceOptions, draft.voice])
+
+    useEffect(() => {
+        setSelectedEpisodeKey(null)
+        setActiveEpisodeKey(null)
+        setActiveEpisodeAudioUrl('')
+
+        if (feedId != null)
+            void loadEpisodes(feedId)
+        else {
+            setPodcastUrl('')
+            setEpisodes([])
+        }
+    }, [feedId])
+
+    useEffect(() => {
+        if (selectedEpisodeKey && !episodes.some(episode => episode.episodeKey == selectedEpisodeKey))
+            setSelectedEpisodeKey(null)
+
+        if (activeEpisodeKey && !episodes.some(episode => episode.episodeKey == activeEpisodeKey)) {
+            setActiveEpisodeKey(null)
+            setActiveEpisodeAudioUrl('')
+        }
+    }, [episodes, selectedEpisodeKey, activeEpisodeKey])
+
+    useEffect(() => {
+        if (draft.showArchivedEpisodes || !selectedEpisodeKey)
+            return
+
+        let selectedEpisode = episodes.find(episode => episode.episodeKey == selectedEpisodeKey)
+        if (!selectedEpisode?.archived)
+            return
+
+        setSelectedEpisodeKey(null)
+
+        if (activeEpisodeKey == selectedEpisodeKey) {
+            setActiveEpisodeKey(null)
+            setActiveEpisodeAudioUrl('')
+        }
+    }, [draft.showArchivedEpisodes, episodes, selectedEpisodeKey, activeEpisodeKey])
+
+    useEffect(() => {
+        if (feedId == null)
+            return
+
+        if (!episodes.some(episode => episode.status == 'generating' || episode.status == 'queued'))
+            return
+
+        let timer = setInterval(() => {
+            void loadEpisodes(feedId)
+        }, 5000)
+
+        return () => {
+            clearInterval(timer)
+        }
+    }, [feedId, episodes])
+
+    let visibleEpisodes = episodes.filter(episode => draft.showArchivedEpisodes || !episode.archived)
     let sortedEpisodes = [...visibleEpisodes].sort((a, b) => {
         if (!a.publishedAt) return 1
         if (!b.publishedAt) return -1
@@ -81,17 +172,17 @@ export function FeedDetailsSection(props: {
     return <section className={classes(panelStyle)}>
         <header className={classes(headerStyle)}>
             <div className={classes(headerInfoStyle)}>
-                <h2 className={classes(headerTitleStyle)}>{props.draft.name || (props.isEditing ? 'Unnamed Feed' : 'New Feed')}</h2>
-                {props.isEditing
-                    ? <a className={classes(rssLinkStyle)} href={props.podcastUrl} target="_blank" rel="noreferrer">
-                        {props.podcastUrl}
+                <h2 className={classes(headerTitleStyle)}>{draft.name || (isEditing ? 'Unnamed Feed' : 'New Feed')}</h2>
+                {isEditing
+                    ? <a className={classes(rssLinkStyle)} href={podcastUrl} target="_blank" rel="noreferrer">
+                        {podcastUrl}
                     </a>
                     : null
                 }
             </div>
 
             <div className={classes(headerActionsStyle)}>
-                {props.isEditing
+                {isEditing
                     ? <button
                         className={classes([actionButtonStyle, isSettingsExpanded && activeActionButtonStyle])}
                         onClick={() => setIsSettingsExpanded(prev => !prev)}
@@ -103,13 +194,13 @@ export function FeedDetailsSection(props: {
             </div>
         </header>
 
-        {(isSettingsExpanded || !props.isEditing) && (
+        {(isSettingsExpanded || !isEditing) && (
             <div className={classes(settingsSectionStyle)}>
                 <div className={classes(settingsGridStyle)}>
                     <Field
                         label="Name"
-                        value={props.draft.name}
-                        onChange={value => props.onDraftChange('name', value)}
+                        value={draft.name}
+                        onChange={value => updateDraft('name', value)}
                         placeholder="Daily Tech News"
                     />
                     {isCustomFeed
@@ -122,45 +213,45 @@ export function FeedDetailsSection(props: {
                         </div>
                         : <Field
                             label="RSS URL"
-                            value={props.draft.rssUrl}
-                            onChange={value => props.onDraftChange('rssUrl', value)}
+                            value={draft.rssUrl}
+                            onChange={value => updateDraft('rssUrl', value)}
                             placeholder="https://example.com/feed.xml"
                         />}
                     <VoiceSelectorField
                         label="Voice"
-                        value={props.draft.voice}
-                        options={props.voiceOptions}
-                        onChange={value => props.onDraftChange('voice', value)}
+                        value={draft.voice}
+                        options={resolvedVoiceOptions}
+                        onChange={value => updateDraft('voice', value)}
                     />
                     <TextSelectField
                         label="Generation mode"
-                        value={props.draft.generationMode}
+                        value={draft.generationMode}
                         options={['on_demand', 'every_episode']}
-                        onChange={value => props.onDraftChange('generationMode', value)}
+                        onChange={value => updateDraft('generationMode', value)}
                     />
                     <TextSelectField
                         label="Content source"
-                        value={props.draft.contentSource}
+                        value={draft.contentSource}
                         options={['feed_article', 'source_page', 'custom']}
-                        onChange={value => props.onDraftChange('contentSource', value)}
+                        onChange={value => updateDraft('contentSource', value)}
                     />
                     <ToggleField
-                        checked={props.draft.showArchivedEpisodes}
+                        checked={draft.showArchivedEpisodes}
                         description="Show archived episodes in this feed manager. Archived episodes stay out of the public podcast feed."
                         label="Show archived episodes"
-                        onChange={value => props.onDraftChange('showArchivedEpisodes', value)}
+                        onChange={value => updateDraft('showArchivedEpisodes', value)}
                     />
                 </div>
 
-                {props.podcastUrl && (
+                {podcastUrl && (
                     <div className={classes(podcastUrlBannerStyle)}>
                         <span className={classes(statusLabelStyle)}>Podcast Feed:</span>
-                        <a className={classes(rssLinkStyle)} href={props.podcastUrl} rel="noreferrer" target="_blank">{props.podcastUrl}</a>
+                        <a className={classes(rssLinkStyle)} href={podcastUrl} rel="noreferrer" target="_blank">{podcastUrl}</a>
                     </div>
                 )}
 
                 <div className={classes(settingsActionsStyle)}>
-                    {props.isEditing ? (
+                    {isEditing ? (
                         <button
                             className={classes([actionButtonStyle, dangerButtonStyle])}
                             onClick={props.onDelete}
@@ -183,23 +274,23 @@ export function FeedDetailsSection(props: {
 
                     <button
                         className={classes([actionButtonStyle, primaryButtonStyle])}
-                        onClick={props.onSubmit}
+                        onClick={() => void saveFeed()}
                         type="button"
                     >
-                        {props.isEditing ? 'Save' : 'Create Feed'}
+                        {isEditing ? 'Save' : 'Create Feed'}
                     </button>
                 </div>
             </div>
         )}
 
-        {(props.status || props.error) && (
+        {(status || error) && (
             <div className={classes(messageContainerStyle)}>
-                {props.status ? <span className={classes(statusStyle)}>{props.status}</span> : null}
-                {props.error ? <span className={classes(errorStyle)}>{props.error}</span> : null}
+                {status ? <span className={classes(statusStyle)}>{status}</span> : null}
+                {error ? <span className={classes(errorStyle)}>{error}</span> : null}
             </div>
         )}
 
-        {props.isEditing && (
+        {isEditing && (
             <div className={classes(episodesAreaStyle)}>
                 {isCustomFeed
                     ? <div className={classes(customArticleBarStyle)}>
@@ -217,18 +308,18 @@ export function FeedDetailsSection(props: {
                             />
                             <button
                                 className={classes([actionButtonStyle, primaryButtonStyle])}
-                                disabled={!articleUrl.trim() || props.isAddingArticle}
+                                disabled={!articleUrl.trim() || isAddingArticle}
                                 onClick={async () => {
                                     let value = articleUrl.trim()
-                                    if (!value || props.isAddingArticle)
+                                    if (!value || isAddingArticle)
                                         return
 
-                                    await props.onAddArticle(value)
+                                    await addArticleToFeed(value)
                                     setArticleUrl('')
                                 }}
                                 type="button"
                             >
-                                {props.isAddingArticle ? 'Adding...' : 'Add article'}
+                                {isAddingArticle ? 'Adding...' : 'Add article'}
                             </button>
                         </div>
                     </div>
@@ -237,7 +328,7 @@ export function FeedDetailsSection(props: {
                 <div className={classes(episodesListContainerStyle)}>
                     {sortedEpisodes.length === 0 ? (
                         <div className={classes(emptyEpisodesStyle)}>
-                            {props.episodes.length > 0 && !props.draft.showArchivedEpisodes
+                            {episodes.length > 0 && !draft.showArchivedEpisodes
                                 ? 'Only archived episodes remain. Enable "Show archived episodes" in settings to review them.'
                                 : isCustomFeed
                                     ? 'No articles yet. Add a URL to create the first episode.'
@@ -256,10 +347,10 @@ export function FeedDetailsSection(props: {
                             </thead>
                             <tbody>
                                 {sortedEpisodes.map(episode => {
-                                    let isPlayingEpisode = props.activeEpisodeKey === episode.episodeKey
-                                    let isSelectedEpisode = props.selectedEpisodeKey == episode.episodeKey
+                                    let isPlayingEpisode = activeEpisodeKey == episode.episodeKey
+                                    let isSelectedEpisode = selectedEpisodeKey == episode.episodeKey
                                     let isGeneratingEpisode = episode.status == 'generating' || episode.status == 'queued'
-                                    let isUpdatingArchive = props.updatingEpisodeArchiveKey == episode.episodeKey
+                                    let isUpdatingArchive = updatingEpisodeArchiveKey == episode.episodeKey
 
                                     let dateStr = ''
                                     if (episode.publishedAt) {
@@ -272,11 +363,11 @@ export function FeedDetailsSection(props: {
                                         <tr
                                             aria-expanded={isSelectedEpisode}
                                             className={classes([trStyle, episode.archived && archivedTrStyle, isSelectedEpisode && activeTrStyle])}
-                                            onClick={() => props.onSelectEpisode(episode.episodeKey)}
+                                            onClick={() => setSelectedEpisodeKey(current => current == episode.episodeKey ? null : episode.episodeKey)}
                                             onKeyDown={event => {
                                                 if (event.key == 'Enter' || event.key == ' ') {
                                                     event.preventDefault()
-                                                    props.onSelectEpisode(episode.episodeKey)
+                                                    setSelectedEpisodeKey(current => current == episode.episodeKey ? null : episode.episodeKey)
                                                 }
                                             }}
                                             tabIndex={0}
@@ -329,15 +420,15 @@ export function FeedDetailsSection(props: {
                                                         <div className={classes(rowMenuPopoverStyle)}>
                                                             <button
                                                                 className={classes(removeArticleMenuButtonStyle)}
-                                                                disabled={props.removingEpisodeKey == episode.episodeKey || episode.status == 'generating'}
+                                                                disabled={removingEpisodeKey == episode.episodeKey || episode.status == 'generating'}
                                                                 onClick={(event) => {
-                                                                    props.onRemoveArticle(episode)
+                                                                    void removeArticleFromFeed(episode)
                                                                     event.currentTarget.closest('details')?.removeAttribute('open')
                                                                 }}
                                                                 title={episode.status == 'generating' ? 'Wait for generation to finish before removing this article' : 'Remove article'}
                                                                 type="button"
                                                             >
-                                                                {props.removingEpisodeKey == episode.episodeKey ? 'Removing...' : 'Remove article'}
+                                                                {removingEpisodeKey == episode.episodeKey ? 'Removing...' : 'Remove article'}
                                                             </button>
                                                         </div>
                                                     </details>
@@ -377,30 +468,30 @@ export function FeedDetailsSection(props: {
                                                                     className={classes([episodeVoiceButtonStyle, episodeVoiceButtonCompactStyle])}
                                                                     commandFor={buildEpisodeVoiceDialogId(episode.episodeKey)}
                                                                     command="show-modal"
-                                                                    disabled={props.updatingEpisodeVoiceKey == episode.episodeKey}
-                                                                    aria-label={buildEpisodeVoiceAriaLabel(props.voiceOptions, episode.voice, props.updatingEpisodeVoiceKey == episode.episodeKey)}
+                                                                    disabled={updatingEpisodeVoiceKey == episode.episodeKey}
+                                                                    aria-label={buildEpisodeVoiceAriaLabel(resolvedVoiceOptions, episode.voice, updatingEpisodeVoiceKey == episode.episodeKey)}
                                                                     type="button"
                                                                 >
-                                                                    {props.updatingEpisodeVoiceKey == episode.episodeKey
+                                                                    {updatingEpisodeVoiceKey == episode.episodeKey
                                                                         ? 'Saving...'
                                                                         : <span className={classes(episodeVoiceButtonInnerStyle)}>
                                                                             <svg className={classes(episodeVoiceIconStyle)} viewBox="0 0 24 24" aria-hidden="true">
                                                                                 <path fill="currentColor" d="M23 9q0 1.725-.612 3.288t-1.663 2.837q-.3.35-.75.375t-.8-.325q-.325-.325-.3-.775t.3-.825q.75-.95 1.163-2.125T20.75 9t-.412-2.425t-1.163-2.1q-.3-.375-.312-.825t.312-.8t.788-.338t.762.363q1.05 1.275 1.663 2.838T23 9m-4.55 0q0 .8-.25 1.538t-.7 1.362q-.275.375-.737.388t-.813-.338q-.325-.325-.337-.787t.212-.888q.15-.275.238-.6T16.15 9t-.088-.675t-.237-.625q-.225-.425-.213-.875t.338-.775q.35-.35.813-.338t.737.388q.45.625.7 1.363T18.45 9M9 13q-1.65 0-2.825-1.175T5 9t1.175-2.825T9 5t2.825 1.175T13 9t-1.175 2.825T9 13m-8 6v-.8q0-.825.425-1.55t1.175-1.1q1.275-.65 2.875-1.1T9 14t3.525.45t2.875 1.1q.75.375 1.175 1.1T17 18.2v.8q0 .825-.587 1.413T15 21H3q-.825 0-1.412-.587T1 19" />
                                                                             </svg>
-                                                                            <span className={classes(episodeVoiceTextStyle)}>{buildEpisodeVoiceSummary(props.voiceOptions, episode.voice) || 'Feed default'}</span>
+                                                                            <span className={classes(episodeVoiceTextStyle)}>{buildEpisodeVoiceSummary(resolvedVoiceOptions, episode.voice) || 'Feed default'}</span>
                                                                         </span>}
                                                                 </button>
                                                                 <VoiceSelectorDialog
                                                                     id={buildEpisodeVoiceDialogId(episode.episodeKey)}
                                                                     value={episode.voice || ''}
-                                                                    options={buildEpisodeVoiceDialogOptions(props.voiceOptions, episode.voice)}
-                                                                    onSave={value => props.onEpisodeVoiceChange(episode.episodeKey, value)}
+                                                                    options={buildEpisodeVoiceDialogOptions(resolvedVoiceOptions, episode.voice)}
+                                                                    onSave={value => updateEpisodeVoice(episode.episodeKey, value)}
                                                                 />
                                                             </div>
 
                                                             <div className={classes(episodeControlItemStyle)}>
                                                                 <span className={classes(episodeControlLabelStyle)}>Transcript</span>
-                                                                {props.feedId != null
+                                                                {feedId != null
                                                                     ? <>
                                                                         <button
                                                                             className={classes([transcriptButtonStyle, transcriptButtonCompactStyle])}
@@ -412,8 +503,8 @@ export function FeedDetailsSection(props: {
                                                                             Open transcript
                                                                         </button>
                                                                         <EpisodeTranscriptDialog
-                                                                            feedId={props.feedId}
-                                                                            feedTitle={props.draft.name || 'Unnamed Feed'}
+                                                                            feedId={feedId}
+                                                                            feedTitle={draft.name || 'Unnamed Feed'}
                                                                             episode={{ episodeKey: episode.episodeKey, title: episode.title }}
                                                                         />
                                                                     </>
@@ -425,7 +516,7 @@ export function FeedDetailsSection(props: {
                                                                 <button
                                                                     className={classes([playButtonStyle, detailActionButtonStyle, episodeActionCompactStyle, episode.archived ? restoreEpisodeButtonStyle : archiveEpisodeButtonStyle])}
                                                                     disabled={isUpdatingArchive}
-                                                                    onClick={() => props.onEpisodeArchiveChange(episode.episodeKey, !episode.archived)}
+                                                                    onClick={() => void updateEpisodeArchived(episode.episodeKey, !episode.archived)}
                                                                     type="button"
                                                                 >
                                                                     {isUpdatingArchive
@@ -440,19 +531,19 @@ export function FeedDetailsSection(props: {
                                                             <div className={classes([episodeDetailCardStyle, episodeDetailAudioCardStyle])}>
                                                                 <span className={classes(episodeDetailLabelStyle)}>Audio</span>
                                                                 <div className={classes(episodeDetailAudioContentStyle)}>
-                                                                    {isPlayingEpisode && props.activeEpisodeAudioUrl ? (
+                                                                    {isPlayingEpisode && activeEpisodeAudioUrl ? (
                                                                         <audio
                                                                             autoPlay
                                                                             className={classes(expandedAudioStyle)}
                                                                             controls
                                                                             preload="none"
-                                                                            src={props.activeEpisodeAudioUrl}
+                                                                            src={activeEpisodeAudioUrl}
                                                                         />
                                                                     ) : isGeneratingEpisode ? (
                                                                         <button
                                                                             aria-label="Cancel audio generation"
                                                                             className={classes([playButtonStyle, detailActionButtonStyle, cancelAudioButtonStyle])}
-                                                                            onClick={() => props.onCancelEpisodeGeneration(episode)}
+                                                                            onClick={() => void cancelEpisodeAudioGeneration(episode)}
                                                                             type="button"
                                                                             title="Cancel generation"
                                                                         >
@@ -462,7 +553,7 @@ export function FeedDetailsSection(props: {
                                                                         <button
                                                                             aria-label="Play episode"
                                                                             className={classes([playButtonStyle, detailActionButtonStyle])}
-                                                                            onClick={() => props.onPlayEpisode(episode)}
+                                                                            onClick={() => playEpisode(episode)}
                                                                             type="button"
                                                                             title="Play audio"
                                                                         >
@@ -472,7 +563,7 @@ export function FeedDetailsSection(props: {
                                                                         <button
                                                                             aria-label="Generate audio"
                                                                             className={classes([playButtonStyle, detailActionButtonStyle, generateAudioButtonStyle])}
-                                                                            onClick={() => props.onGenerateEpisode(episode)}
+                                                                            onClick={() => void generateEpisodeAudio(episode)}
                                                                             type="button"
                                                                             title="Generate audio"
                                                                         >
@@ -503,6 +594,273 @@ export function FeedDetailsSection(props: {
             </div>
         )}
     </section>
+
+    function updateDraft(field: keyof FeedDraft, value: string | boolean) {
+        setDraft(current => ({ ...current, [field]: value }))
+    }
+
+    async function saveFeed() {
+        setError('')
+        setStatus('')
+
+        if (draft.contentSource != 'custom' && !draft.rssUrl.trim()) {
+            setError('RSS URL is required')
+            return
+        }
+
+        if (draft.contentSource == 'custom' && !draft.name.trim()) {
+            setError('Name is required for custom feeds')
+            return
+        }
+
+        if (!draft.voice.trim()) {
+            setError('Voice is required')
+            return
+        }
+
+        try {
+            await props.onSave(draft)
+            setStatus(isEditing ? 'Feed updated' : 'Feed added')
+
+            if (feedId != null)
+                await loadEpisodes(feedId)
+        }
+        catch (cause) {
+            let message = cause instanceof Error ? cause.message : 'Failed to save feed'
+            setError(message)
+        }
+    }
+
+    async function addArticleToFeed(url: string) {
+        if (feedId == null || !props.feed)
+            return
+
+        setError('')
+        setStatus('')
+        setIsAddingArticle(true)
+
+        try {
+            await api.feeds.addArticle.mutate({ id: feedId, url })
+            setStatus(props.feed.generationMode == 'every_episode' ? 'Article added and generation started' : 'Article added')
+            await loadEpisodes(feedId)
+        }
+        catch (cause) {
+            let message = cause instanceof Error ? cause.message : 'Failed to add article'
+            setError(message)
+            throw cause
+        }
+        finally {
+            setIsAddingArticle(false)
+        }
+    }
+
+    async function removeArticleFromFeed(episode: Episode) {
+        if (feedId == null || !props.feed)
+            return
+
+        let confirmed = window.confirm(`Remove "${episode.title}" from "${props.feed.name || 'Untitled Feed'}"?`)
+        if (!confirmed)
+            return
+
+        setError('')
+        setStatus('')
+        setRemovingEpisodeKey(episode.episodeKey)
+
+        try {
+            await api.feeds.removeArticle.mutate({ id: feedId, episodeKey: episode.episodeKey })
+
+            if (activeEpisodeKey == episode.episodeKey) {
+                setActiveEpisodeKey(null)
+                setActiveEpisodeAudioUrl('')
+            }
+
+            if (selectedEpisodeKey == episode.episodeKey)
+                setSelectedEpisodeKey(null)
+
+            setStatus('Article removed')
+            await loadEpisodes(feedId)
+        }
+        catch (cause) {
+            let message = cause instanceof Error ? cause.message : 'Failed to remove article'
+            setError(message)
+        }
+        finally {
+            setRemovingEpisodeKey(null)
+        }
+    }
+
+    async function generateEpisodeAudio(episode: Episode) {
+        if (feedId == null || episode.audioReady || episode.status == 'generating' || episode.status == 'queued')
+            return
+
+        setError('')
+        setStatus('')
+        setEpisodes(current => current.map(entry => entry.episodeKey == episode.episodeKey
+            ? {
+                ...entry,
+                status: 'queued',
+                errorMessage: null,
+                progressPercent: 0,
+                progressMode: 'none',
+                chunksProcessed: 0,
+                chunksTotal: 0,
+                estimatedSecondsRemaining: 0
+            }
+            : entry
+        ))
+
+        try {
+            await api.feeds.generateEpisode.mutate({ id: feedId, episodeKey: episode.episodeKey })
+            await loadEpisodes(feedId)
+        }
+        catch (cause) {
+            let message = cause instanceof Error ? cause.message : 'Failed to generate audio'
+            setError(message)
+            await loadEpisodes(feedId)
+        }
+    }
+
+    async function cancelEpisodeAudioGeneration(episode: Episode) {
+        if (feedId == null || (episode.status != 'generating' && episode.status != 'queued'))
+            return
+
+        setError('')
+        setStatus('')
+        setEpisodes(current => current.map(entry => entry.episodeKey == episode.episodeKey
+            ? {
+                ...entry,
+                status: 'pending',
+                errorMessage: null,
+                progressPercent: 0,
+                progressMode: 'none',
+                chunksProcessed: 0,
+                chunksTotal: 0,
+                estimatedSecondsRemaining: 0
+            }
+            : entry
+        ))
+
+        try {
+            await api.feeds.cancelEpisode.mutate({ id: feedId, episodeKey: episode.episodeKey })
+            await loadEpisodes(feedId)
+        }
+        catch (cause) {
+            let message = cause instanceof Error ? cause.message : 'Failed to cancel audio generation'
+            setError(message)
+            await loadEpisodes(feedId)
+        }
+    }
+
+    async function updateEpisodeVoice(episodeKey: string, voice: string) {
+        if (feedId == null || !props.feed)
+            return
+
+        setError('')
+        setStatus('')
+        setUpdatingEpisodeVoiceKey(episodeKey)
+
+        try {
+            await api.feeds.setEpisodeVoice.mutate({ id: feedId, episodeKey, voice })
+            setStatus(voice ? 'Episode voice updated' : 'Episode voice reset to feed default')
+
+            if (activeEpisodeKey == episodeKey)
+                setActiveEpisodeAudioUrl(`${window.location.origin}/feed/${props.feed.podcastSlug}/${episodeKey}?v=${Date.now()}`)
+
+            await loadEpisodes(feedId)
+        }
+        catch (cause) {
+            let message = cause instanceof Error ? cause.message : 'Failed to update episode voice'
+            setError(message)
+        }
+        finally {
+            setUpdatingEpisodeVoiceKey(null)
+        }
+    }
+
+    async function updateEpisodeArchived(episodeKey: string, archived: boolean) {
+        if (feedId == null || !props.feed)
+            return
+
+        setError('')
+        setStatus('')
+        setUpdatingEpisodeArchiveKey(episodeKey)
+
+        try {
+            await api.feeds.setEpisodeArchive.mutate({ id: feedId, episodeKey, archived })
+            setStatus(archived ? 'Episode archived' : 'Episode restored')
+
+            if (archived && !draft.showArchivedEpisodes) {
+                if (selectedEpisodeKey == episodeKey)
+                    setSelectedEpisodeKey(null)
+
+                if (activeEpisodeKey == episodeKey) {
+                    setActiveEpisodeKey(null)
+                    setActiveEpisodeAudioUrl('')
+                }
+            }
+
+            await loadEpisodes(feedId)
+        }
+        catch (cause) {
+            let message = cause instanceof Error ? cause.message : 'Failed to update archived state'
+            setError(message)
+        }
+        finally {
+            setUpdatingEpisodeArchiveKey(null)
+        }
+    }
+
+    function playEpisode(episode: Episode) {
+        setSelectedEpisodeKey(episode.episodeKey)
+        setActiveEpisodeKey(episode.episodeKey)
+        setActiveEpisodeAudioUrl(episode.audioUrl)
+    }
+
+    async function loadEpisodes(nextFeedId: number) {
+        try {
+            let response = await api.feeds.episodes.query({ id: nextFeedId })
+            setPodcastUrl(`${window.location.origin}${response.podcastUrl}`)
+            let enrichedEpisodes = response.episodes.map(episode => ({
+                ...episode,
+                audioUrl: `${window.location.origin}${episode.episodePath}`
+            }))
+            setEpisodes(enrichedEpisodes)
+        }
+        catch {
+            setEpisodes([])
+            setPodcastUrl('')
+        }
+    }
+}
+
+function buildInitialDraft(feed: Feed | null, voiceOptions: VoiceOption[]): FeedDraft {
+    if (feed) {
+        return {
+            name: feed.name,
+            rssUrl: feed.rssUrl,
+            voice: feed.voice,
+            generationMode: feed.generationMode,
+            showArchivedEpisodes: feed.showArchivedEpisodes,
+            contentSource: feed.contentSource
+        }
+    }
+
+    return {
+        name: '',
+        rssUrl: '',
+        voice: getFallbackVoiceId(voiceOptions),
+        generationMode: 'on_demand',
+        showArchivedEpisodes: false,
+        contentSource: 'feed_article'
+    }
+}
+
+function getFallbackVoiceId(voiceOptions: VoiceOption[]) {
+    let firstVoice = voiceOptions.at(0)
+    if (firstVoice)
+        return firstVoice.id
+
+    return ''
 }
 
 function buildEpisodeVoiceDialogId(episodeKey: string) {
