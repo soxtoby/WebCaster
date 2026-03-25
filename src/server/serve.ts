@@ -21,9 +21,14 @@ export function startServer(hostname: string, port: number) {
         development: process.env.NODE_ENV !== 'production',
         hostname,
         port,
+        fetch(request) {
+            let response = new Response('Not Found', { status: 404 })
+            logRequest(request.method, request.url, response.status)
+            return response
+        },
         routes: {
             '/': index,
-            '/feed/:slug': async (request) => {
+            '/feed/:slug': withRequestLogging(async (request) => {
                 let slug = request.params.slug.replace(/\.xml$/, '')
                 let feed = await getFeedByPodcastSlug(slug)
                 if (!feed)
@@ -35,8 +40,8 @@ export function startServer(hostname: string, port: number) {
                         'content-type': 'application/rss+xml; charset=utf-8'
                     }
                 })
-            },
-            '/feed/:slug/:episodeKey': async (request) => {
+            }),
+            '/feed/:slug/:episodeKey': withRequestLogging(async (request) => {
                 let slug = request.params.slug
                 let episodeKey = request.params.episodeKey.trim().replace(/\.mp3$/i, '')
                 if (!episodeKey)
@@ -47,20 +52,37 @@ export function startServer(hostname: string, port: number) {
                     return new Response('Feed not found', { status: 404 })
 
                 return await streamEpisodeAudio(feed, episodeKey)
-            },
-            '/preview/:voiceId': async (request) => {
+            }),
+            '/preview/:voiceId': withRequestLogging(async (request) => {
                 return await streamVoicePreviewAudio(request.params.voiceId)
-            },
-            '/api/:procedure': (request) => {
+            }),
+            '/api/:procedure': withRequestLogging((request) => {
                 return fetchRequestHandler({
                     endpoint: '/api',
                     req: request,
                     router: appRouter,
                     createContext: (opts) => buildTrpcContext(opts.req, opts.resHeaders)
                 })
-            }
+            })
         }
     })
 
     return server.url
+}
+
+function withRequestLogging<TRequest extends Request>(handler: (request: TRequest) => Response | Promise<Response>) {
+    return async (request: TRequest) => {
+        try {
+            let response = await handler(request)
+            logRequest(request.method, request.url, response.status)
+            return response
+        } catch (error) {
+            logRequest(request.method, request.url, 500)
+            throw error
+        }
+    }
+}
+
+function logRequest(method: string, url: string, status: number) {
+    console.log(`${method} ${url} ${status}`)
 }
