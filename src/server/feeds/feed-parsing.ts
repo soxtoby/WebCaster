@@ -84,15 +84,17 @@ function parseAtomFeed(feed: any): ParsedFeed {
 }
 
 function extractRssImage(channel: any): string | null {
-    if (channel['itunes:image']?.['@_href'])
-        return channel['itunes:image']['@_href']
+    let itunesImage = firstArrayValue(channel['itunes:image'], image => image?.['@_href'])
+    if (itunesImage)
+        return itunesImage
 
-    let imageUrl = textOf(channel.image?.url)
+    let imageUrl = firstArrayValue(channel.image, image => textOf(image?.url))
     if (imageUrl)
         return imageUrl
 
-    if (channel['media:thumbnail']?.['@_url'])
-        return channel['media:thumbnail']['@_url']
+    let mediaThumbnail = firstArrayValue(channel['media:thumbnail'], image => image?.['@_url'])
+    if (mediaThumbnail)
+        return mediaThumbnail
 
     return null
 }
@@ -166,6 +168,16 @@ function toArray(value: any): any[] {
     if (Array.isArray(value))
         return value
     return [value]
+}
+
+function firstArrayValue<T>(value: any, map: (item: any) => T | null | undefined): T | null {
+    for (let item of toArray(value)) {
+        let mapped = map(item)
+        if (mapped)
+            return mapped
+    }
+
+    return null
 }
 
 function cleanText(value: string): string | null {

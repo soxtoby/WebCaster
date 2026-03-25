@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Fixed feed images for certain feeds.
+
 ## V1.0.7
 
 ### Added
