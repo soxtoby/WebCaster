@@ -12,6 +12,7 @@ export function FeedManagerPage() {
     let [selectedFeedId, setSelectedFeedId] = useState<number | null>(null)
     let [isCreating, setIsCreating] = useState(false)
     let [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>([])
+    let [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
     let { data: feeds = [], isLoading, isError } = useLiveQuery(q => q.from({ feedCollection }))
 
@@ -36,29 +37,114 @@ export function FeedManagerPage() {
         void loadVoices()
     }, [])
 
+    useEffect(() => {
+        let mediaQuery = window.matchMedia('(min-width: 921px)')
+
+        function handleMediaQueryChange(event: MediaQueryListEvent) {
+            if (event.matches)
+                setIsMobileMenuOpen(false)
+        }
+
+        if (mediaQuery.matches)
+            setIsMobileMenuOpen(false)
+
+        mediaQuery.addEventListener('change', handleMediaQueryChange)
+
+        return () => {
+            mediaQuery.removeEventListener('change', handleMediaQueryChange)
+        }
+    }, [])
+
+    useEffect(() => {
+        if (!isMobileMenuOpen)
+            return
+
+        function handleKeyDown(event: KeyboardEvent) {
+            if (event.key == 'Escape')
+                setIsMobileMenuOpen(false)
+        }
+
+        window.addEventListener('keydown', handleKeyDown)
+
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown)
+        }
+    }, [isMobileMenuOpen])
+
     return <div className={classes(pageStyle)}>
         <header className={classes(headerStyle)}>
-            <div className={classes(brandStyle)}>
-                <img className={classes(brandIconStyle)} src={icon} alt="WebCaster logo" />
-                <h1 className={classes(headingStyle)}><span className={classes(headingWebStyle)}>Web</span><span className={classes(headingCasterStyle)}>Caster</span></h1>
+            <div className={classes(headerLeadStyle)}>
+                <button
+                    aria-controls="feed-list-panel"
+                    aria-expanded={isMobileMenuOpen}
+                    aria-label={isMobileMenuOpen ? "Close feed list" : "Open feed list"}
+                    className={classes([iconButtonStyle, mobileMenuButtonStyle, isMobileMenuOpen && iconButtonActiveStyle])}
+                    onClick={() => setIsMobileMenuOpen(open => !open)}
+                    type="button"
+                >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        {isMobileMenuOpen
+                            ? <>
+                                <path d="M18 6 6 18" />
+                                <path d="m6 6 12 12" />
+                            </>
+                            : <>
+                                <path d="M4 7h16" />
+                                <path d="M4 12h16" />
+                                <path d="M4 17h16" />
+                            </>
+                        }
+                    </svg>
+                </button>
+                <div className={classes(brandStyle)}>
+                    <img className={classes(brandIconStyle)} src={icon} alt="WebCaster logo" />
+                    <h1 className={classes(headingStyle)}><span className={classes(headingWebStyle)}>Web</span><span className={classes(headingCasterStyle)}>Caster</span></h1>
+                </div>
             </div>
-            <button
-                className={classes(settingsButtonStyle)}
-                commandFor="settings-dialog"
-                command="show-modal"
-                type="button"
-                aria-label="Settings"
-            >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-                    <circle cx="12" cy="12" r="3" />
-                </svg>
-            </button>
+            <div className={classes(headerActionsStyle)}>
+                <button
+                    className={classes(iconButtonStyle)}
+                    commandFor="settings-dialog"
+                    command="show-modal"
+                    type="button"
+                    aria-label="Settings"
+                >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                        <circle cx="12" cy="12" r="3" />
+                    </svg>
+                </button>
+            </div>
         </header>
 
         <div className={classes(layoutStyle)}>
-            <section className={classes([panelStyle, listPanelStyle])}>
-                <h2 className={classes(panelHeadingStyle)}>Feed list</h2>
+            <button
+                aria-label="Close feed list"
+                aria-hidden={!isMobileMenuOpen}
+                className={classes([flyoutBackdropStyle, isMobileMenuOpen && flyoutBackdropVisibleStyle])}
+                onClick={() => setIsMobileMenuOpen(false)}
+                tabIndex={isMobileMenuOpen ? 0 : -1}
+                type="button"
+            />
+
+            <section
+                id="feed-list-panel"
+                className={classes([panelStyle, listPanelStyle, listPanelFlyoutStyle, isMobileMenuOpen && listPanelFlyoutOpenStyle])}
+            >
+                <div className={classes(panelHeadingRowStyle)}>
+                    <h2 className={classes(panelHeadingStyle)}>Feed list</h2>
+                    <button
+                        aria-label="Close feed list"
+                        className={classes([iconButtonStyle, flyoutCloseButtonStyle])}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        type="button"
+                    >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M18 6 6 18" />
+                            <path d="m6 6 12 12" />
+                        </svg>
+                    </button>
+                </div>
                 {isLoading ? <p className={classes(emptyStyle)}>Loading feeds...</p> : null}
                 {isError ? <p className={classes(errorStyle)}>Could not load feeds</p> : null}
                 {!isLoading && feeds.length == 0 ? <p className={classes(emptyStyle)}>No feeds yet.</p> : null}
@@ -69,6 +155,7 @@ export function FeedManagerPage() {
                         onClick={() => {
                             setSelectedFeedId(feed.id)
                             setIsCreating(false)
+                            setIsMobileMenuOpen(false)
                         }}
                         type="button"
                     >
@@ -93,6 +180,7 @@ export function FeedManagerPage() {
                             onClick={() => {
                                 setSelectedFeedId(null)
                                 setIsCreating(true)
+                                setIsMobileMenuOpen(false)
                             }}
                             type="button"
                         >
@@ -251,7 +339,20 @@ let headerStyle = style('header', {
     gap: 10
 })
 
-let settingsButtonStyle = style('settingsButton', {
+let headerLeadStyle = style('headerLead', {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 0
+})
+
+let headerActionsStyle = style('headerActions', {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8
+})
+
+let iconButtonStyle = style('iconButton', {
     background: 'none',
     border: 'none',
     padding: 6,
@@ -266,6 +367,20 @@ let settingsButtonStyle = style('settingsButton', {
         '&:hover': {
             color: 'var(--fg)',
             backgroundColor: 'var(--panel)'
+        }
+    }
+})
+
+let iconButtonActiveStyle = style('iconButtonActive', {
+    color: 'var(--text)',
+    backgroundColor: 'var(--panel)'
+})
+
+let mobileMenuButtonStyle = style('mobileMenuButton', {
+    display: 'none',
+    $: {
+        '@media (max-width: 920px)': {
+            display: 'flex'
         }
     }
 })
@@ -307,7 +422,8 @@ let layoutStyle = style('layout', {
     $: {
         '@media (max-width: 920px)': {
             gridTemplateColumns: '1fr',
-            overflow: 'auto'
+            position: 'relative',
+            overflow: 'hidden'
         }
     }
 })
@@ -327,10 +443,84 @@ let listPanelStyle = style('listPanel', {
     gap: 12
 })
 
+let listPanelFlyoutStyle = style('listPanelFlyout', {
+    $: {
+        '@media (max-width: 920px)': {
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            bottom: 0,
+            width: 'min(22rem, calc(100vw - 20px))',
+            maxWidth: '100%',
+            zIndex: 20,
+            borderRadius: '0 18px 18px 0',
+            padding: 18,
+            boxShadow: '0 24px 48px rgba(15, 23, 42, 0.22)',
+            transform: 'translateX(calc(-100% - 24px))',
+            opacity: 0,
+            pointerEvents: 'none',
+            transition: 'transform 0.22s ease, opacity 0.22s ease'
+        }
+    }
+})
+
+let listPanelFlyoutOpenStyle = style('listPanelFlyoutOpen', {
+    $: {
+        '@media (max-width: 920px)': {
+            transform: 'translateX(0)',
+            opacity: 1,
+            pointerEvents: 'auto'
+        }
+    }
+})
+
+let flyoutBackdropStyle = style('flyoutBackdrop', {
+    display: 'none',
+    $: {
+        '@media (max-width: 920px)': {
+            display: 'block',
+            position: 'absolute',
+            inset: 0,
+            border: 'none',
+            background: 'rgba(15, 23, 42, 0)',
+            opacity: 0,
+            pointerEvents: 'none',
+            transition: 'background-color 0.22s ease, opacity 0.22s ease',
+            zIndex: 10
+        }
+    }
+})
+
+let flyoutBackdropVisibleStyle = style('flyoutBackdropVisible', {
+    $: {
+        '@media (max-width: 920px)': {
+            background: 'rgba(15, 23, 42, 0.34)',
+            opacity: 1,
+            pointerEvents: 'auto'
+        }
+    }
+})
+
+let panelHeadingRowStyle = style('panelHeadingRow', {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12
+})
+
 let panelHeadingStyle = style('panelHeading', {
     margin: [0, 0, 4, 0],
     fontSize: 16,
     fontWeight: 600
+})
+
+let flyoutCloseButtonStyle = style('flyoutCloseButton', {
+    display: 'none',
+    $: {
+        '@media (max-width: 920px)': {
+            display: 'flex'
+        }
+    }
 })
 
 let listStyle = style('feedList', {
