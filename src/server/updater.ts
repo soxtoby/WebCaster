@@ -125,39 +125,72 @@ async function downloadUpdate(url: string): Promise<boolean> {
 function applyUpdate() {
     let newExePath = updateExePath
     let currentExePath = process.execPath
-    let tempDir = process.env.TEMP || process.env.TMP || 'C:/Temp'
+    let tempDir = process.env.TEMP || process.env.TMP || updateDir
     let scriptPath = join(tempDir, 'webcaster-update.ps1')
-
-    let newExePs = newExePath.replace(/\\/g, '/')
-    let currentExePs = currentExePath.replace(/\\/g, '/')
+    let logPath = join(updateDir, 'update.log')
+    let powershellPath = join(process.env.SystemRoot || 'C:/Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+    let commandShell = process.env.ComSpec || join(process.env.SystemRoot || 'C:/Windows', 'System32', 'cmd.exe')
 
     let script = `
+        $ErrorActionPreference = 'Stop'
         $pidToWait = ${process.pid}
-        $newExe = '${newExePs}'
-        $currentExe = '${currentExePs}'
+        $newExe = '${escapeForPowerShellLiteral(newExePath)}'
+        $currentExe = '${escapeForPowerShellLiteral(currentExePath)}'
+        $logPath = '${escapeForPowerShellLiteral(logPath)}'
+
+        function Write-Log([string] $message) {
+            Add-Content -Path $logPath -Value "$(Get-Date -Format o) $message"
+        }
+
+        Write-Log 'Update helper started'
 
         while (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue) {
             Start-Sleep -Milliseconds 500
         }
 
-        Start-Sleep -Milliseconds 500
-        Copy-Item -Path $newExe -Destination $currentExe -Force
-        Start-Process $currentExe
+        Start-Sleep -Seconds 1
+
+        $copied = $false
+        for ($attempt = 1; $attempt -le 20 -and -not $copied; $attempt++) {
+            try {
+                Copy-Item -Path $newExe -Destination $currentExe -Force
+                $copied = $true
+                Write-Log "Copied update on attempt $attempt"
+            } catch {
+                Write-Log "Copy failed on attempt $($attempt): $($_.Exception.Message)"
+                Start-Sleep -Seconds 1
+            }
+        }
+
+        if (-not $copied) {
+            Write-Log 'Failed to replace executable'
+            exit 1
+        }
+
+        try {
+            Start-Process -FilePath $currentExe -WorkingDirectory (Split-Path -Parent $currentExe)
+            Write-Log 'Restarted app'
+        } catch {
+            Write-Log "Restart failed: $($_.Exception.Message)"
+            exit 1
+        }
     `
 
     writeFileSync(scriptPath, script, 'utf8')
 
-    let child = spawn('powershell.exe', [
-        '-WindowStyle', 'Hidden',
-        '-ExecutionPolicy', 'Bypass',
-        '-File', scriptPath
-    ], {
-        detached: true,
-        stdio: 'ignore'
-    })
-    child.unref()
+    let startCommand = `start "" /min "${powershellPath}" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "${scriptPath}"`
 
-    process.exit(0)
+    try {
+        let child = spawn(commandShell, ['/d', '/s', '/c', startCommand], {
+            detached: true,
+            stdio: 'ignore',
+            windowsHide: true
+        })
+        child.unref()
+        process.exit(0)
+    } catch (error) {
+        console.error('Failed to launch update helper', error)
+    }
 }
 
 function isNewerVersion(latest: string, current: string): boolean {
@@ -167,4 +200,8 @@ function isNewerVersion(latest: string, current: string): boolean {
     if (lMaj !== cMaj) return lMaj > cMaj
     if (lMin !== cMin) return lMin > cMin
     return lPatch > cPatch
+}
+
+function escapeForPowerShellLiteral(value: string) {
+    return value.replace(/'/g, "''")
 }

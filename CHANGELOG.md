@@ -8,6 +8,7 @@
 ### Fixed
 - Feed settings section is scrollable on smaller screens.
 - Fix old HTML being cached after an update.
+- Hopefully fix auto-updates.
 
 ## V1.0.6
 
