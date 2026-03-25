@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## V1.0.7
 
 ### Added
 - Feed list is collapsed to a nav drawer on smaller screens.
