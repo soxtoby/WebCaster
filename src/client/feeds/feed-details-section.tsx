@@ -1038,7 +1038,12 @@ let panelStyle = style('panel', {
     flexDirection: 'column',
     minHeight: 0,
     boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-    overflow: 'hidden'
+    overflow: 'hidden',
+    $: {
+        '@media (max-width: 920px)': {
+            overflowY: 'auto'
+        }
+    }
 })
 
 let headerStyle = style('header', {
@@ -1275,7 +1280,13 @@ let episodesAreaStyle = style('episodesArea', {
     flexDirection: 'column',
     flex: 1,
     minHeight: 0,
-    backgroundColor: 'var(--panel)'
+    backgroundColor: 'var(--panel)',
+    $: {
+        '@media (max-width: 920px)': {
+            flex: 'none',
+            minHeight: 'fit-content'
+        }
+    }
 })
 
 let customArticleBarStyle = style('customArticleBar', {
@@ -1313,7 +1324,12 @@ let customArticleFormStyle = style('customArticleForm', {
 let episodesListContainerStyle = style('episodesListContainer', {
     flex: 1,
     overflow: 'auto',
-    padding: 0
+    padding: 0,
+    $: {
+        '@media (max-width: 920px)': {
+            overflow: 'visible'
+        }
+    }
 })
 
 let episodesTableStyle = style('table', {

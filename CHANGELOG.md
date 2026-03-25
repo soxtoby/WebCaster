@@ -5,6 +5,9 @@
 ### Added
 - Feed list is collapsed to a nav drawer on smaller screens.
 
+### Fixed
+- Feed settings section is scrollable on smaller screens.
+
 ## V1.0.6
 
 ### Added
