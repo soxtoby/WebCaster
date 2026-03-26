@@ -4,6 +4,7 @@
 
 ### Fixed
 - Fixed feed images for certain feeds.
+- Should be more usable on mobile.
 
 ## V1.0.7
 

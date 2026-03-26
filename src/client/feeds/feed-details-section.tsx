@@ -58,6 +58,7 @@ export function FeedDetailsSection(props: {
     let [updatingEpisodeArchiveKey, setUpdatingEpisodeArchiveKey] = useState<string | null>(null)
     let [isSettingsExpanded, setIsSettingsExpanded] = useState(!isEditing)
     let [articleUrl, setArticleUrl] = useState('')
+    let [isNarrowViewport, setIsNarrowViewport] = useState(() => window.matchMedia('(max-width: 920px)').matches)
     let resolvedVoiceOptions = useMemo(() => {
         let options = [...props.voiceOptions]
 
@@ -161,13 +162,28 @@ export function FeedDetailsSection(props: {
         }
     }, [feedId, episodes])
 
+    useEffect(() => {
+        let mediaQuery = window.matchMedia('(max-width: 920px)')
+
+        function handleMediaQueryChange(event: MediaQueryListEvent) {
+            setIsNarrowViewport(event.matches)
+        }
+
+        setIsNarrowViewport(mediaQuery.matches)
+        mediaQuery.addEventListener('change', handleMediaQueryChange)
+
+        return () => {
+            mediaQuery.removeEventListener('change', handleMediaQueryChange)
+        }
+    }, [])
+
     let visibleEpisodes = episodes.filter(episode => draft.showArchivedEpisodes || !episode.archived)
     let sortedEpisodes = [...visibleEpisodes].sort((a, b) => {
         if (!a.publishedAt) return 1
         if (!b.publishedAt) return -1
         return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
     })
-    let summaryColumnCount = isCustomFeed ? 5 : 4
+    let summaryColumnCount = isNarrowViewport ? (isCustomFeed ? 2 : 1) : (isCustomFeed ? 5 : 4)
 
     return <section className={classes(panelStyle)}>
         <header className={classes(headerStyle)}>
@@ -335,260 +351,128 @@ export function FeedDetailsSection(props: {
                                     : 'No episodes discovered yet.'}
                         </div>
                     ) : (
-                        <table className={classes(episodesTableStyle)}>
-                            <thead>
-                                <tr>
-                                    <th className={classes([thStyle, thTitleStyle])}>Episode Title</th>
-                                    <th className={classes([thStyle, thDateStyle])}>Published</th>
-                                    <th className={classes([thStyle, thDurationStyle])}>Length</th>
-                                    <th className={classes([thStyle, thStatusStyle])}>Status</th>
-                                    {isCustomFeed ? <th className={classes([thStyle, thActionsStyle])}>Actions</th> : null}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {sortedEpisodes.map(episode => {
-                                    let isPlayingEpisode = activeEpisodeKey == episode.episodeKey
-                                    let isSelectedEpisode = selectedEpisodeKey == episode.episodeKey
-                                    let isGeneratingEpisode = episode.status == 'generating' || episode.status == 'queued'
-                                    let isUpdatingArchive = updatingEpisodeArchiveKey == episode.episodeKey
+                        <div className={classes(episodesTableScrollerStyle)}>
+                            <table className={classes(episodesTableStyle)}>
+                                <thead>
+                                    <tr>
+                                        <th className={classes([thStyle, thTitleStyle])}>Episode Title</th>
+                                        {!isNarrowViewport ? <th className={classes([thStyle, thDateStyle])}>Published</th> : null}
+                                        {!isNarrowViewport ? <th className={classes([thStyle, thDurationStyle])}>Length</th> : null}
+                                        {!isNarrowViewport ? <th className={classes([thStyle, thStatusStyle])}>Status</th> : null}
+                                        {isCustomFeed ? <th className={classes([thStyle, thActionsStyle])}>Actions</th> : null}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {sortedEpisodes.map(episode => {
+                                        let isPlayingEpisode = activeEpisodeKey == episode.episodeKey
+                                        let isSelectedEpisode = selectedEpisodeKey == episode.episodeKey
+                                        let isGeneratingEpisode = episode.status == 'generating' || episode.status == 'queued'
+                                        let isUpdatingArchive = updatingEpisodeArchiveKey == episode.episodeKey
 
-                                    let dateStr = ''
-                                    if (episode.publishedAt) {
-                                        dateStr = new Date(episode.publishedAt).toLocaleDateString(undefined, {
-                                            month: 'short', day: 'numeric', year: 'numeric'
-                                        })
-                                    }
+                                        let dateStr = ''
+                                        if (episode.publishedAt) {
+                                            dateStr = new Date(episode.publishedAt).toLocaleDateString(undefined, {
+                                                month: 'short', day: 'numeric', year: 'numeric'
+                                            })
+                                        }
 
-                                    return <Fragment key={episode.episodeKey}>
-                                        <tr
-                                            aria-expanded={isSelectedEpisode}
-                                            className={classes([trStyle, episode.archived && archivedTrStyle, isSelectedEpisode && activeTrStyle])}
-                                            onClick={() => setSelectedEpisodeKey(current => current == episode.episodeKey ? null : episode.episodeKey)}
-                                            onKeyDown={event => {
-                                                if (event.key == 'Enter' || event.key == ' ') {
-                                                    event.preventDefault()
-                                                    setSelectedEpisodeKey(current => current == episode.episodeKey ? null : episode.episodeKey)
-                                                }
-                                            }}
-                                            tabIndex={0}
-                                        >
-                                            <td className={classes([tdStyle, tdTitleStyle])}>
-                                                <div className={classes(episodeRowSummaryStyle)}>
-                                                    <span className={classes([episodeExpandIconStyle, isSelectedEpisode && episodeExpandIconOpenStyle])} aria-hidden="true">
-                                                        <svg className={classes(episodeExpandIconGlyphStyle)} viewBox="0 0 20 20">
-                                                            <path d="M7 4l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
-                                                        </svg>
-                                                    </span>
-                                                    <div className={classes(episodeRowTextStyle)}>
-                                                        <div className={classes(episodeTitleRowStyle)}>
-                                                            <div className={classes(episodeTitleTextStyle)} title={episode.title}>{episode.title}</div>
-                                                            {episode.archived ? <span className={classes(archivedBadgeStyle)}>Archived</span> : null}
-                                                        </div>
-                                                        {episode.errorMessage ? <div className={classes(episodeErrorTextStyle)}>{episode.errorMessage}</div> : null}
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className={classes([tdStyle, tdDateStyle])}>{dateStr || '—'}</td>
-                                            <td className={classes([tdStyle, tdDurationStyle])}>{buildEpisodeDurationLabel(episode)}</td>
-                                            <td className={classes(tdStyle)}>
-                                                {episode.status == 'generating'
-                                                    ? <div className={classes(progressStatusStyle)}>
-                                                        <div className={classes(progressTrackStyle)}>
-                                                            <div
-                                                                className={classes(progressFillStyle)}
-                                                                style={{ width: `${Math.min(100, Math.max(0, episode.progressPercent))}%` }}
-                                                            />
-                                                        </div>
-                                                        <div className={classes(progressMetaStyle)}>{buildEpisodeProgressLabel(episode)}</div>
-                                                    </div>
-                                                    : <span className={classes([statusBadgeStyle, episode.status == 'ready' && completedBadgeStyle])}>
-                                                        {episode.status.replace('_', ' ')}
-                                                    </span>}
-                                            </td>
-                                            {isCustomFeed
-                                                ? <td className={classes([tdStyle, tdActionsStyle])} onClick={event => event.stopPropagation()}>
-                                                    <details className={classes(rowMenuStyle)}>
-                                                        <summary
-                                                            className={classes(rowMenuTriggerStyle)}
-                                                            aria-label="Episode actions"
-                                                            title="Episode actions"
-                                                        >
-                                                            <svg className={classes(rowMenuTriggerIconStyle)} viewBox="0 0 24 24" aria-hidden="true">
-                                                                <path fill="currentColor" d="M12 7a1.75 1.75 0 1 1 0-3.5A1.75 1.75 0 0 1 12 7m0 7a1.75 1.75 0 1 1 0-3.5A1.75 1.75 0 0 1 12 14m0 7a1.75 1.75 0 1 1 0-3.5A1.75 1.75 0 0 1 12 21" />
+                                        return <Fragment key={episode.episodeKey}>
+                                            <tr
+                                                aria-expanded={isSelectedEpisode}
+                                                className={classes([trStyle, episode.archived && archivedTrStyle, isSelectedEpisode && activeTrStyle])}
+                                                onClick={() => setSelectedEpisodeKey(current => current == episode.episodeKey ? null : episode.episodeKey)}
+                                                onKeyDown={event => {
+                                                    if (event.key == 'Enter' || event.key == ' ') {
+                                                        event.preventDefault()
+                                                        setSelectedEpisodeKey(current => current == episode.episodeKey ? null : episode.episodeKey)
+                                                    }
+                                                }}
+                                                tabIndex={0}
+                                            >
+                                                <td className={classes([tdStyle, tdTitleStyle])}>
+                                                    <div className={classes(episodeRowSummaryStyle)}>
+                                                        <span className={classes([episodeExpandIconStyle, isSelectedEpisode && episodeExpandIconOpenStyle])} aria-hidden="true">
+                                                            <svg className={classes(episodeExpandIconGlyphStyle)} viewBox="0 0 20 20">
+                                                                <path d="M7 4l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
                                                             </svg>
-                                                        </summary>
-                                                        <div className={classes(rowMenuPopoverStyle)}>
-                                                            <button
-                                                                className={classes(removeArticleMenuButtonStyle)}
-                                                                disabled={removingEpisodeKey == episode.episodeKey || episode.status == 'generating'}
-                                                                onClick={(event) => {
-                                                                    void removeArticleFromFeed(episode)
-                                                                    event.currentTarget.closest('details')?.removeAttribute('open')
-                                                                }}
-                                                                title={episode.status == 'generating' ? 'Wait for generation to finish before removing this article' : 'Remove article'}
-                                                                type="button"
-                                                            >
-                                                                {removingEpisodeKey == episode.episodeKey ? 'Removing...' : 'Remove article'}
-                                                            </button>
-                                                        </div>
-                                                    </details>
-                                                </td>
-                                                : null}
-                                        </tr>
-                                        {isSelectedEpisode
-                                            ? <tr className={classes(expandedTrStyle)}>
-                                                <td className={classes(expandedTdStyle)} colSpan={summaryColumnCount}>
-                                                    <div className={classes(episodeExpandedPanelStyle)}>
-                                                        <div className={classes(episodeExpandedHeaderStyle)}>
-                                                            <div className={classes(episodeExpandedTitleBlockStyle)}>
-                                                                <span className={classes(episodeExpandedEyebrowStyle)}>Episode details</span>
-                                                                <div className={classes(episodeExpandedTitleStyle)}>{episode.title}</div>
-                                                            </div>
-                                                            <div className={classes(episodeMetaListStyle)}>
-                                                                <span className={classes(episodeMetaPillStyle)}>{dateStr || 'Unpublished'}</span>
-                                                                <span className={classes(episodeMetaPillStyle)}>{buildEpisodeDurationLabel(episode)}</span>
-                                                                <span className={classes([statusBadgeStyle, episode.status == 'ready' && completedBadgeStyle])}>
-                                                                    {episode.status.replace('_', ' ')}
-                                                                </span>
+                                                        </span>
+                                                        <div className={classes(episodeRowTextStyle)}>
+                                                            <div className={classes(episodeTitleRowStyle)}>
+                                                                <div className={classes(episodeTitleTextStyle)} title={episode.title}>{episode.title}</div>
                                                                 {episode.archived ? <span className={classes(archivedBadgeStyle)}>Archived</span> : null}
-                                                                {isPlayingEpisode ? <span className={classes(episodePlayingPillStyle)}>Now playing</span> : null}
                                                             </div>
+                                                            {episode.errorMessage ? <div className={classes(episodeErrorTextStyle)}>{episode.errorMessage}</div> : null}
+                                                            {isNarrowViewport
+                                                                ? <div className={classes(mobileEpisodeMetaRowStyle)}>
+                                                                    <span className={classes([statusBadgeStyle, episode.status == 'ready' && completedBadgeStyle])}>
+                                                                        {episode.status.replace('_', ' ')}
+                                                                    </span>
+                                                                    {dateStr ? <span className={classes(mobileEpisodeMetaTextStyle)}>{dateStr}</span> : null}
+                                                                    <span className={classes(mobileEpisodeMetaTextStyle)}>{buildEpisodeDurationLabel(episode)}</span>
+                                                                </div>
+                                                                : null}
                                                         </div>
-
-                                                        {episode.sourceUrl
-                                                            ? <a className={classes(episodeSourceLinkStyle)} href={episode.sourceUrl} rel="noreferrer" target="_blank">
-                                                                Open source article
-                                                            </a>
-                                                            : null}
-
-                                                        <div className={classes(episodeControlRowStyle)}>
-                                                            <div className={classes(episodeControlItemStyle)}>
-                                                                <span className={classes(episodeControlLabelStyle)}>Voice</span>
-                                                                <button
-                                                                    className={classes([episodeVoiceButtonStyle, episodeVoiceButtonCompactStyle])}
-                                                                    commandFor={buildEpisodeVoiceDialogId(episode.episodeKey)}
-                                                                    command="show-modal"
-                                                                    disabled={updatingEpisodeVoiceKey == episode.episodeKey}
-                                                                    aria-label={buildEpisodeVoiceAriaLabel(resolvedVoiceOptions, episode.voice, updatingEpisodeVoiceKey == episode.episodeKey)}
-                                                                    type="button"
-                                                                >
-                                                                    {updatingEpisodeVoiceKey == episode.episodeKey
-                                                                        ? 'Saving...'
-                                                                        : <span className={classes(episodeVoiceButtonInnerStyle)}>
-                                                                            <svg className={classes(episodeVoiceIconStyle)} viewBox="0 0 24 24" aria-hidden="true">
-                                                                                <path fill="currentColor" d="M23 9q0 1.725-.612 3.288t-1.663 2.837q-.3.35-.75.375t-.8-.325q-.325-.325-.3-.775t.3-.825q.75-.95 1.163-2.125T20.75 9t-.412-2.425t-1.163-2.1q-.3-.375-.312-.825t.312-.8t.788-.338t.762.363q1.05 1.275 1.663 2.838T23 9m-4.55 0q0 .8-.25 1.538t-.7 1.362q-.275.375-.737.388t-.813-.338q-.325-.325-.337-.787t.212-.888q.15-.275.238-.6T16.15 9t-.088-.675t-.237-.625q-.225-.425-.213-.875t.338-.775q.35-.35.813-.338t.737.388q.45.625.7 1.363T18.45 9M9 13q-1.65 0-2.825-1.175T5 9t1.175-2.825T9 5t2.825 1.175T13 9t-1.175 2.825T9 13m-8 6v-.8q0-.825.425-1.55t1.175-1.1q1.275-.65 2.875-1.1T9 14t3.525.45t2.875 1.1q.75.375 1.175 1.1T17 18.2v.8q0 .825-.587 1.413T15 21H3q-.825 0-1.412-.587T1 19" />
-                                                                            </svg>
-                                                                            <span className={classes(episodeVoiceTextStyle)}>{buildEpisodeVoiceSummary(resolvedVoiceOptions, episode.voice) || 'Feed default'}</span>
-                                                                        </span>}
-                                                                </button>
-                                                                <VoiceSelectorDialog
-                                                                    id={buildEpisodeVoiceDialogId(episode.episodeKey)}
-                                                                    value={episode.voice || ''}
-                                                                    options={buildEpisodeVoiceDialogOptions(resolvedVoiceOptions, episode.voice)}
-                                                                    onSave={value => updateEpisodeVoice(episode.episodeKey, value)}
+                                                    </div>
+                                                </td>
+                                                {!isNarrowViewport ? <td className={classes([tdStyle, tdDateStyle])}>{dateStr || '—'}</td> : null}
+                                                {!isNarrowViewport ? <td className={classes([tdStyle, tdDurationStyle])}>{buildEpisodeDurationLabel(episode)}</td> : null}
+                                                {!isNarrowViewport ? <td className={classes(tdStyle)}>
+                                                    {episode.status == 'generating'
+                                                        ? <div className={classes(progressStatusStyle)}>
+                                                            <div className={classes(progressTrackStyle)}>
+                                                                <div
+                                                                    className={classes(progressFillStyle)}
+                                                                    style={{ width: `${Math.min(100, Math.max(0, episode.progressPercent))}%` }}
                                                                 />
                                                             </div>
-
-                                                            <div className={classes(episodeControlItemStyle)}>
-                                                                <span className={classes(episodeControlLabelStyle)}>Transcript</span>
-                                                                {feedId != null
-                                                                    ? <>
-                                                                        <button
-                                                                            className={classes([transcriptButtonStyle, transcriptButtonCompactStyle])}
-                                                                            commandFor={buildEpisodeTranscriptDialogId(episode.episodeKey)}
-                                                                            command="show-modal"
-                                                                            type="button"
-                                                                            aria-label="Open transcript"
-                                                                        >
-                                                                            Open transcript
-                                                                        </button>
-                                                                        <EpisodeTranscriptDialog
-                                                                            feedId={feedId}
-                                                                            feedTitle={draft.name || 'Unnamed Feed'}
-                                                                            episode={{ episodeKey: episode.episodeKey, title: episode.title }}
-                                                                        />
-                                                                    </>
-                                                                    : null}
-                                                            </div>
-
-                                                            <div className={classes(episodeControlItemStyle)}>
-                                                                <span className={classes(episodeControlLabelStyle)}>Visibility</span>
+                                                            <div className={classes(progressMetaStyle)}>{buildEpisodeProgressLabel(episode)}</div>
+                                                        </div>
+                                                        : <span className={classes([statusBadgeStyle, episode.status == 'ready' && completedBadgeStyle])}>
+                                                            {episode.status.replace('_', ' ')}
+                                                        </span>}
+                                                </td> : null}
+                                                {isCustomFeed
+                                                    ? <td className={classes([tdStyle, tdActionsStyle])} onClick={event => event.stopPropagation()}>
+                                                        <details className={classes(rowMenuStyle)}>
+                                                            <summary
+                                                                className={classes(rowMenuTriggerStyle)}
+                                                                aria-label="Episode actions"
+                                                                title="Episode actions"
+                                                            >
+                                                                <svg className={classes(rowMenuTriggerIconStyle)} viewBox="0 0 24 24" aria-hidden="true">
+                                                                    <path fill="currentColor" d="M12 7a1.75 1.75 0 1 1 0-3.5A1.75 1.75 0 0 1 12 7m0 7a1.75 1.75 0 1 1 0-3.5A1.75 1.75 0 0 1 12 14m0 7a1.75 1.75 0 1 1 0-3.5A1.75 1.75 0 0 1 12 21" />
+                                                                </svg>
+                                                            </summary>
+                                                            <div className={classes(rowMenuPopoverStyle)}>
                                                                 <button
-                                                                    className={classes([playButtonStyle, detailActionButtonStyle, episodeActionCompactStyle, episode.archived ? restoreEpisodeButtonStyle : archiveEpisodeButtonStyle])}
-                                                                    disabled={isUpdatingArchive}
-                                                                    onClick={() => void updateEpisodeArchived(episode.episodeKey, !episode.archived)}
+                                                                    className={classes(removeArticleMenuButtonStyle)}
+                                                                    disabled={removingEpisodeKey == episode.episodeKey || episode.status == 'generating'}
+                                                                    onClick={(event) => {
+                                                                        void removeArticleFromFeed(episode)
+                                                                        event.currentTarget.closest('details')?.removeAttribute('open')
+                                                                    }}
+                                                                    title={episode.status == 'generating' ? 'Wait for generation to finish before removing this article' : 'Remove article'}
                                                                     type="button"
                                                                 >
-                                                                    {isUpdatingArchive
-                                                                        ? (episode.archived ? 'Restoring...' : 'Archiving...')
-                                                                        : episode.archived ? 'Unarchive episode' : 'Archive episode'}
+                                                                    {removingEpisodeKey == episode.episodeKey ? 'Removing...' : 'Remove article'}
                                                                 </button>
                                                             </div>
-                                                        </div>
-
-                                                        <div className={classes(episodeDetailGridStyle)}>
-
-                                                            <div className={classes([episodeDetailCardStyle, episodeDetailAudioCardStyle])}>
-                                                                <span className={classes(episodeDetailLabelStyle)}>Audio</span>
-                                                                <div className={classes(episodeDetailAudioContentStyle)}>
-                                                                    {isPlayingEpisode && activeEpisodeAudioUrl ? (
-                                                                        <audio
-                                                                            autoPlay
-                                                                            className={classes(expandedAudioStyle)}
-                                                                            controls
-                                                                            preload="none"
-                                                                            src={activeEpisodeAudioUrl}
-                                                                        />
-                                                                    ) : isGeneratingEpisode ? (
-                                                                        <button
-                                                                            aria-label="Cancel audio generation"
-                                                                            className={classes([playButtonStyle, detailActionButtonStyle, cancelAudioButtonStyle])}
-                                                                            onClick={() => void cancelEpisodeAudioGeneration(episode)}
-                                                                            type="button"
-                                                                            title="Cancel generation"
-                                                                        >
-                                                                            Cancel generation
-                                                                        </button>
-                                                                    ) : episode.audioReady ? (
-                                                                        <button
-                                                                            aria-label="Play episode"
-                                                                            className={classes([playButtonStyle, detailActionButtonStyle])}
-                                                                            onClick={() => playEpisode(episode)}
-                                                                            type="button"
-                                                                            title="Play audio"
-                                                                        >
-                                                                            Play episode
-                                                                        </button>
-                                                                    ) : (
-                                                                        <button
-                                                                            aria-label="Generate audio"
-                                                                            className={classes([playButtonStyle, detailActionButtonStyle, generateAudioButtonStyle])}
-                                                                            onClick={() => void generateEpisodeAudio(episode)}
-                                                                            type="button"
-                                                                            title="Generate audio"
-                                                                        >
-                                                                            Generate audio
-                                                                        </button>
-                                                                    )}
-                                                                </div>
-                                                                <span className={classes(episodeDetailHintStyle)}>
-                                                                    {isGeneratingEpisode
-                                                                        ? buildEpisodeProgressLabel(episode)
-                                                                        : episode.audioReady
-                                                                            ? (isPlayingEpisode ? 'Playback is active for this episode.' : 'Audio is ready to play.')
-                                                                            : 'Generate narrated audio for this episode.'}
-                                                                </span>
-                                                            </div>
-
-                                                        </div>
-                                                    </div>
-                                                </td>
+                                                        </details>
+                                                    </td>
+                                                    : null}
                                             </tr>
-                                            : null}
-                                    </Fragment>
-                                })}
-                            </tbody>
-                        </table>
+                                            {isSelectedEpisode
+                                                ? <tr className={classes(expandedTrStyle)}>
+                                                    <td className={classes(expandedTdStyle)} colSpan={summaryColumnCount}>
+                                                        {renderEpisodeExpandedPanel(episode)}
+                                                    </td>
+                                                </tr>
+                                                : null}
+                                        </Fragment>
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
                     )}
                 </div>
             </div>
@@ -830,6 +714,162 @@ export function FeedDetailsSection(props: {
             setEpisodes([])
             setPodcastUrl('')
         }
+    }
+
+    function renderEpisodeExpandedPanel(episode: Episode) {
+        let isPlayingEpisode = activeEpisodeKey == episode.episodeKey
+        let isGeneratingEpisode = episode.status == 'generating' || episode.status == 'queued'
+        let isUpdatingArchive = updatingEpisodeArchiveKey == episode.episodeKey
+        let dateStr = ''
+
+        if (episode.publishedAt) {
+            dateStr = new Date(episode.publishedAt).toLocaleDateString(undefined, {
+                month: 'short', day: 'numeric', year: 'numeric'
+            })
+        }
+
+        return <div className={classes(episodeExpandedPanelStyle)}>
+            <div className={classes(episodeExpandedHeaderStyle)}>
+                <div className={classes(episodeExpandedTitleBlockStyle)}>
+                    <span className={classes(episodeExpandedEyebrowStyle)}>Episode details</span>
+                    <div className={classes(episodeExpandedTitleStyle)}>{episode.title}</div>
+                </div>
+                <div className={classes(episodeMetaListStyle)}>
+                    <span className={classes(episodeMetaPillStyle)}>{dateStr || 'Unpublished'}</span>
+                    <span className={classes(episodeMetaPillStyle)}>{buildEpisodeDurationLabel(episode)}</span>
+                    <span className={classes([statusBadgeStyle, episode.status == 'ready' && completedBadgeStyle])}>
+                        {episode.status.replace('_', ' ')}
+                    </span>
+                    {episode.archived ? <span className={classes(archivedBadgeStyle)}>Archived</span> : null}
+                    {isPlayingEpisode ? <span className={classes(episodePlayingPillStyle)}>Now playing</span> : null}
+                </div>
+            </div>
+
+            {episode.sourceUrl
+                ? <a className={classes(episodeSourceLinkStyle)} href={episode.sourceUrl} rel="noreferrer" target="_blank">
+                    Open source article
+                </a>
+                : null}
+
+            <div className={classes(episodeControlRowStyle)}>
+                <div className={classes(episodeControlItemStyle)}>
+                    <span className={classes(episodeControlLabelStyle)}>Voice</span>
+                    <button
+                        className={classes([episodeVoiceButtonStyle, episodeVoiceButtonCompactStyle])}
+                        commandFor={buildEpisodeVoiceDialogId(episode.episodeKey)}
+                        command="show-modal"
+                        disabled={updatingEpisodeVoiceKey == episode.episodeKey}
+                        aria-label={buildEpisodeVoiceAriaLabel(resolvedVoiceOptions, episode.voice, updatingEpisodeVoiceKey == episode.episodeKey)}
+                        type="button"
+                    >
+                        {updatingEpisodeVoiceKey == episode.episodeKey
+                            ? 'Saving...'
+                            : <span className={classes(episodeVoiceButtonInnerStyle)}>
+                                <svg className={classes(episodeVoiceIconStyle)} viewBox="0 0 24 24" aria-hidden="true">
+                                    <path fill="currentColor" d="M23 9q0 1.725-.612 3.288t-1.663 2.837q-.3.35-.75.375t-.8-.325q-.325-.325-.3-.775t.3-.825q.75-.95 1.163-2.125T20.75 9t-.412-2.425t-1.163-2.1q-.3-.375-.312-.825t.312-.8t.788-.338t.762.363q1.05 1.275 1.663 2.838T23 9m-4.55 0q0 .8-.25 1.538t-.7 1.362q-.275.375-.737.388t-.813-.338q-.325-.325-.337-.787t.212-.888q.15-.275.238-.6T16.15 9t-.088-.675t-.237-.625q-.225-.425-.213-.875t.338-.775q.35-.35.813-.338t.737.388q.45.625.7 1.363T18.45 9M9 13q-1.65 0-2.825-1.175T5 9t1.175-2.825T9 5t2.825 1.175T13 9t-1.175 2.825T9 13m-8 6v-.8q0-.825.425-1.55t1.175-1.1q1.275-.65 2.875-1.1T9 14t3.525.45t2.875 1.1q.75.375 1.175 1.1T17 18.2v.8q0 .825-.587 1.413T15 21H3q-.825 0-1.412-.587T1 19" />
+                                </svg>
+                                <span className={classes(episodeVoiceTextStyle)}>{buildEpisodeVoiceSummary(resolvedVoiceOptions, episode.voice) || 'Feed default'}</span>
+                            </span>}
+                    </button>
+                    <VoiceSelectorDialog
+                        id={buildEpisodeVoiceDialogId(episode.episodeKey)}
+                        value={episode.voice || ''}
+                        options={buildEpisodeVoiceDialogOptions(resolvedVoiceOptions, episode.voice)}
+                        onSave={value => updateEpisodeVoice(episode.episodeKey, value)}
+                    />
+                </div>
+
+                <div className={classes(episodeControlItemStyle)}>
+                    <span className={classes(episodeControlLabelStyle)}>Transcript</span>
+                    {feedId != null
+                        ? <>
+                            <button
+                                className={classes([transcriptButtonStyle, transcriptButtonCompactStyle])}
+                                commandFor={buildEpisodeTranscriptDialogId(episode.episodeKey)}
+                                command="show-modal"
+                                type="button"
+                                aria-label="Open transcript"
+                            >
+                                Open transcript
+                            </button>
+                            <EpisodeTranscriptDialog
+                                feedId={feedId}
+                                feedTitle={draft.name || 'Unnamed Feed'}
+                                episode={{ episodeKey: episode.episodeKey, title: episode.title }}
+                            />
+                        </>
+                        : null}
+                </div>
+
+                <div className={classes(episodeControlItemStyle)}>
+                    <span className={classes(episodeControlLabelStyle)}>Visibility</span>
+                    <button
+                        className={classes([playButtonStyle, detailActionButtonStyle, episodeActionCompactStyle, episode.archived ? restoreEpisodeButtonStyle : archiveEpisodeButtonStyle])}
+                        disabled={isUpdatingArchive}
+                        onClick={() => void updateEpisodeArchived(episode.episodeKey, !episode.archived)}
+                        type="button"
+                    >
+                        {isUpdatingArchive
+                            ? (episode.archived ? 'Restoring...' : 'Archiving...')
+                            : episode.archived ? 'Unarchive episode' : 'Archive episode'}
+                    </button>
+                </div>
+            </div>
+
+            <div className={classes(episodeDetailGridStyle)}>
+                <div className={classes([episodeDetailCardStyle, episodeDetailAudioCardStyle])}>
+                    <span className={classes(episodeDetailLabelStyle)}>Audio</span>
+                    <div className={classes(episodeDetailAudioContentStyle)}>
+                        {isPlayingEpisode && activeEpisodeAudioUrl ? (
+                            <audio
+                                autoPlay
+                                className={classes(expandedAudioStyle)}
+                                controls
+                                preload="none"
+                                src={activeEpisodeAudioUrl}
+                            />
+                        ) : isGeneratingEpisode ? (
+                            <button
+                                aria-label="Cancel audio generation"
+                                className={classes([playButtonStyle, detailActionButtonStyle, cancelAudioButtonStyle])}
+                                onClick={() => void cancelEpisodeAudioGeneration(episode)}
+                                type="button"
+                                title="Cancel generation"
+                            >
+                                Cancel generation
+                            </button>
+                        ) : episode.audioReady ? (
+                            <button
+                                aria-label="Play episode"
+                                className={classes([playButtonStyle, detailActionButtonStyle])}
+                                onClick={() => playEpisode(episode)}
+                                type="button"
+                                title="Play audio"
+                            >
+                                Play episode
+                            </button>
+                        ) : (
+                            <button
+                                aria-label="Generate audio"
+                                className={classes([playButtonStyle, detailActionButtonStyle, generateAudioButtonStyle])}
+                                onClick={() => void generateEpisodeAudio(episode)}
+                                type="button"
+                                title="Generate audio"
+                            >
+                                Generate audio
+                            </button>
+                        )}
+                    </div>
+                    <span className={classes(episodeDetailHintStyle)}>
+                        {isGeneratingEpisode
+                            ? buildEpisodeProgressLabel(episode)
+                            : episode.audioReady
+                                ? (isPlayingEpisode ? 'Playback is active for this episode.' : 'Audio is ready to play.')
+                                : 'Generate narrated audio for this episode.'}
+                    </span>
+                </div>
+            </div>
+        </div>
     }
 }
 
@@ -1323,11 +1363,29 @@ let customArticleFormStyle = style('customArticleForm', {
 
 let episodesListContainerStyle = style('episodesListContainer', {
     flex: 1,
+    minWidth: 0,
     overflow: 'auto',
     padding: 0,
+    scrollbarGutter: 'stable',
     $: {
         '@media (max-width: 920px)': {
-            overflow: 'visible'
+            scrollbarGutter: 'auto'
+        }
+    }
+})
+
+let episodesTableScrollerStyle = style('episodesTableScroller', {
+    width: '100%',
+    maxWidth: '100%',
+    minWidth: 0,
+    overflow: 'visible',
+    $: {
+        '@media (max-width: 920px)': {
+            overflowX: 'auto',
+            overflowY: 'visible',
+            overscrollBehaviorX: 'contain',
+            touchAction: 'pan-x',
+            WebkitOverflowScrolling: 'touch'
         }
     }
 })
@@ -1337,7 +1395,12 @@ let episodesTableStyle = style('table', {
     borderCollapse: 'collapse',
     textAlign: 'left',
     tableLayout: 'auto',
-    minWidth: 620
+    minWidth: 620,
+    $: {
+        '@media (max-width: 920px)': {
+            minWidth: '100%'
+        }
+    }
 })
 
 let emptyEpisodesStyle = style('emptyEpisodes', {
@@ -1360,19 +1423,39 @@ let thStyle = style('th', {
 })
 
 let thTitleStyle = style('thTitle', {
-    width: '45%'
+    width: '45%',
+    $: {
+        '@media (max-width: 920px)': {
+            width: 'auto'
+        }
+    }
 })
 
 let thDateStyle = style('thDate', {
-    width: '15%'
+    width: '15%',
+    $: {
+        '@media (max-width: 920px)': {
+            display: 'none'
+        }
+    }
 })
 
 let thDurationStyle = style('thDuration', {
-    width: 110
+    width: 110,
+    $: {
+        '@media (max-width: 920px)': {
+            display: 'none'
+        }
+    }
 })
 
 let thStatusStyle = style('thStatus', {
-    width: 180
+    width: 180,
+    $: {
+        '@media (max-width: 920px)': {
+            width: 132
+        }
+    }
 })
 
 let thVoiceStyle = style('thVoice', {
@@ -1391,7 +1474,12 @@ let thAudioStyle = style('thAudio', {
 
 let thActionsStyle = style('thActions', {
     width: 120,
-    textAlign: 'right'
+    textAlign: 'right',
+    $: {
+        '@media (max-width: 920px)': {
+            width: 64
+        }
+    }
 })
 
 let trStyle = style('tr', {
@@ -1425,7 +1513,12 @@ let tdStyle = style('td', {
     padding: '12px 20px',
     fontSize: 13,
     verticalAlign: 'middle',
-    color: 'var(--text)'
+    color: 'var(--text)',
+    $: {
+        '@media (max-width: 920px)': {
+            padding: '12px 14px'
+        }
+    }
 })
 
 let tdTitleStyle = style('tdTitle', {
@@ -1433,12 +1526,22 @@ let tdTitleStyle = style('tdTitle', {
 })
 
 let tdDateStyle = style('tdDate', {
-    color: 'var(--muted)'
+    color: 'var(--muted)',
+    $: {
+        '@media (max-width: 920px)': {
+            display: 'none'
+        }
+    }
 })
 
 let tdDurationStyle = style('tdDuration', {
     color: 'var(--muted)',
-    whiteSpace: 'nowrap'
+    whiteSpace: 'nowrap',
+    $: {
+        '@media (max-width: 920px)': {
+            display: 'none'
+        }
+    }
 })
 
 let tdVoiceStyle = style('tdVoice', {
@@ -1675,6 +1778,20 @@ let episodeErrorTextStyle = style('episodeError', {
     textOverflow: 'ellipsis'
 })
 
+let mobileEpisodeMetaRowStyle = style('mobileEpisodeMetaRow', {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+    marginTop: 8
+})
+
+let mobileEpisodeMetaTextStyle = style('mobileEpisodeMetaText', {
+    fontSize: 12,
+    color: 'var(--muted)',
+    whiteSpace: 'nowrap'
+})
+
 let statusBadgeStyle = style('statusBadge', {
     display: 'inline-block',
     padding: '2px 8px',
@@ -1902,7 +2019,12 @@ let episodeExpandedPanelStyle = style('episodeExpandedPanel', {
     display: 'flex',
     flexDirection: 'column',
     gap: 16,
-    background: 'linear-gradient(180deg, color-mix(in srgb, var(--bg) 72%, white) 0%, color-mix(in srgb, var(--panel) 92%, white) 100%)'
+    background: 'linear-gradient(180deg, color-mix(in srgb, var(--bg) 72%, white) 0%, color-mix(in srgb, var(--panel) 92%, white) 100%)',
+    $: {
+        '@media (max-width: 920px)': {
+            padding: 16
+        }
+    }
 })
 
 let episodeExpandedHeaderStyle = style('episodeExpandedHeader', {
@@ -1910,7 +2032,14 @@ let episodeExpandedHeaderStyle = style('episodeExpandedHeader', {
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 16,
-    flexWrap: 'wrap'
+    flexWrap: 'wrap',
+    $: {
+        '@media (max-width: 920px)': {
+            flexDirection: 'column',
+            alignItems: 'stretch',
+            gap: 12
+        }
+    }
 })
 
 let episodeExpandedTitleBlockStyle = style('episodeExpandedTitleBlock', {
@@ -1940,7 +2069,12 @@ let episodeMetaListStyle = style('episodeMetaList', {
     display: 'flex',
     gap: 8,
     flexWrap: 'wrap',
-    alignItems: 'center'
+    alignItems: 'center',
+    $: {
+        '@media (max-width: 920px)': {
+            width: '100%'
+        }
+    }
 })
 
 let episodeMetaPillStyle = style('episodeMetaPill', {
@@ -1951,7 +2085,8 @@ let episodeMetaPillStyle = style('episodeMetaPill', {
     fontSize: 12,
     color: 'var(--muted)',
     backgroundColor: 'color-mix(in srgb, var(--bg) 88%, white)',
-    border: '1px solid color-mix(in srgb, var(--border) 88%, transparent)'
+    border: '1px solid color-mix(in srgb, var(--border) 88%, transparent)',
+    maxWidth: '100%'
 })
 
 let episodePlayingPillStyle = style('episodePlayingPill', {
