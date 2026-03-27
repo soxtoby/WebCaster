@@ -5,6 +5,7 @@
 ### Fixed
 - Fixed feed images for certain feeds.
 - Should be more usable on mobile.
+- HEAD requests for episodes don't trigger audio generation.
 
 ## V1.0.7
 

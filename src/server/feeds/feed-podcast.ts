@@ -205,16 +205,20 @@ export async function buildPodcastFeedXml(feed: Feed) {
     return `<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">\n<channel>\n<title>${safeTitle}</title>\n<link>${escapeXml(siteLink)}</link>\n<description>${safeDescription}</description>\n<atom:link href="${escapeXml(selfLink)}" rel="self" type="application/rss+xml"/>\n${channelImage}\n${items}\n</channel>\n</rss>`
 }
 
-export async function streamEpisodeAudio(feed: Feed, episodeKey: string): Promise<Response> {
+export async function streamEpisodeAudio(feed: Feed, episodeKey: string, options?: { requestMethod?: string }): Promise<Response> {
+    let isHeadRequest = options?.requestMethod == 'HEAD'
     let article = findArticleByEpisodeKey(feed.id, episodeKey)
 
     if (!article)
-        return new Response('Episode not found', { status: 404 })
+        return new Response(isHeadRequest ? null : 'Episode not found', { status: 404 })
 
     let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
     let preferredFile = Bun.file(resolvedPath)
     if (await preferredFile.exists())
-        return new Response(preferredFile, { headers: { 'content-type': 'audio/mpeg' } })
+        return buildEpisodeAudioResponse(preferredFile, isHeadRequest)
+
+    if (isHeadRequest)
+        return new Response(null, { status: 202 })
 
     try {
         await scheduleEpisodeGeneration(feed, article)
@@ -226,14 +230,8 @@ export async function streamEpisodeAudio(feed: Feed, episodeKey: string): Promis
     }
 
     preferredFile = Bun.file(resolvedPath)
-    if (await preferredFile.exists()) {
-        return new Response(preferredFile, {
-            headers: {
-                'content-type': 'audio/mpeg',
-                'cache-control': 'no-store'
-            }
-        })
-    }
+    if (await preferredFile.exists())
+        return buildEpisodeAudioResponse(preferredFile, false, true)
 
     return new Response('Generated audio was not found', { status: 500 })
 }
@@ -1578,6 +1576,23 @@ async function getEnclosureLength(feed: Feed, article: Pick<Article, 'episodeKey
     let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
     let file = Bun.file(resolvedPath)
     return await file.exists() ? file.size : 0
+}
+
+function buildEpisodeAudioResponse(file: Bun.BunFile, isHeadRequest: boolean, noStore = false) {
+    let headers = new Headers({
+        'content-type': 'audio/mpeg'
+    })
+
+    if (file.size > 0)
+        headers.set('content-length', String(file.size))
+
+    if (noStore)
+        headers.set('cache-control', 'no-store')
+
+    if (isHeadRequest)
+        return new Response(null, { headers })
+
+    return new Response(file, { headers })
 }
 
 function escapeXml(value: string) {

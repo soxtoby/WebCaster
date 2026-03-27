@@ -51,7 +51,7 @@ export function startServer(hostname: string, port: number) {
                 if (!feed)
                     return new Response('Feed not found', { status: 404 })
 
-                return await streamEpisodeAudio(feed, episodeKey)
+                return await streamEpisodeAudio(feed, episodeKey, { requestMethod: request.method })
             }),
             '/preview/:voiceId': withRequestLogging(async (request) => {
                 return await streamVoicePreviewAudio(request.params.voiceId)
