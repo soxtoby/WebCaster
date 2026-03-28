@@ -135,7 +135,7 @@ export function EpisodesSection({
         if (!b.publishedAt) return -1
         return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
     })
-    let summaryColumnCount = isNarrowViewport ? (isCustomFeed ? 2 : 1) : (isCustomFeed ? 5 : 4)
+    let summaryColumnCount = isNarrowViewport ? 2 : 5
 
     return <div className={classes(episodesAreaStyle)}>
         {isCustomFeed
@@ -189,7 +189,7 @@ export function EpisodesSection({
                                 {!isNarrowViewport ? <th className={classes([thStyle, thDateStyle])}>Published</th> : null}
                                 {!isNarrowViewport ? <th className={classes([thStyle, thDurationStyle])}>Length</th> : null}
                                 {!isNarrowViewport ? <th className={classes([thStyle, thStatusStyle])}>Status</th> : null}
-                                {isCustomFeed ? <th className={classes([thStyle, thActionsStyle])}>Actions</th> : null}
+                                <th className={classes([thStyle, thActionsStyle])}>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -522,35 +522,67 @@ function EpisodeTableRow({
                         {episode.status.replace('_', ' ')}
                     </span>}
             </td> : null}
-            {isCustomFeed
-                ? <td className={classes([tdStyle, tdActionsStyle])} onClick={event => event.stopPropagation()}>
-                    <details className={classes(rowMenuStyle)}>
-                        <summary
-                            className={classes(rowMenuTriggerStyle)}
-                            aria-label="Episode actions"
-                            title="Episode actions"
-                        >
-                            <svg className={classes(rowMenuTriggerIconStyle)} viewBox="0 0 24 24" aria-hidden="true">
-                                <path fill="currentColor" d="M12 7a1.75 1.75 0 1 1 0-3.5A1.75 1.75 0 0 1 12 7m0 7a1.75 1.75 0 1 1 0-3.5A1.75 1.75 0 0 1 12 14m0 7a1.75 1.75 0 1 1 0-3.5A1.75 1.75 0 0 1 12 21" />
+            <td className={classes([tdStyle, tdActionsStyle])} onClick={event => event.stopPropagation()}>
+                <div className={classes(rowActionGroupStyle)}>
+                    <button
+                        aria-label={buildCollapsedGenerateButtonLabel(episode)}
+                        className={classes([playButtonStyle, rowIconButtonStyle, generateAudioButtonStyle])}
+                        disabled={episode.audioReady || isGeneratingEpisode}
+                        onClick={() => void onGenerateAudio(episode)}
+                        title={buildCollapsedGenerateButtonLabel(episode)}
+                        type="button"
+                    >
+                        {episode.audioReady
+                            ? <svg className={classes(rowActionIconStyle)} viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M9.75 16.4l-3.15-3.15 1.4-1.4 1.75 1.75 6.25-6.25 1.4 1.4z" fill="currentColor" />
                             </svg>
-                        </summary>
-                        <div className={classes(rowMenuPopoverStyle)}>
-                            <button
-                                className={classes(removeArticleMenuButtonStyle)}
-                                disabled={isRemoving || isGeneratingEpisode}
-                                onClick={(event) => {
-                                    void onRemoveArticle(episode)
-                                    event.currentTarget.closest('details')?.removeAttribute('open')
-                                }}
-                                title={isGeneratingEpisode ? 'Wait for generation to finish before removing this article' : 'Remove article'}
-                                type="button"
+                            : <svg className={classes(rowActionIconStyle)} viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M12 4.75l1.7 4.55 4.55 1.7-4.55 1.7L12 17.25l-1.7-4.55-4.55-1.7 4.55-1.7zm5.35 8.65l.7 1.85 1.85.7-1.85.7-.7 1.85-.7-1.85-1.85-.7 1.85-.7zm-9.65 1.45l.9 2.45 2.45.9-2.45.9-.9 2.45-.9-2.45-2.45-.9 2.45-.9z" fill="currentColor" />
+                            </svg>}
+                    </button>
+                    <button
+                        aria-label={episode.archived ? 'Unarchive episode' : 'Archive episode'}
+                        className={classes([playButtonStyle, rowIconButtonStyle, episode.archived ? restoreEpisodeButtonStyle : archiveEpisodeButtonStyle])}
+                        disabled={isUpdatingArchive}
+                        onClick={() => void onUpdateArchived(episode.episodeKey, !episode.archived)}
+                        title={episode.archived ? 'Restore episode to the podcast feed' : 'Archive episode from the podcast feed'}
+                        type="button"
+                    >
+                        {isUpdatingArchive
+                            ? <span className={classes(rowActionBusyDotStyle)} aria-hidden="true" />
+                            : <svg className={classes(rowActionIconStyle)} viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M7 8h10l-1 10H8zm1.3-3h7.4l1.2 2H7.1z" fill="currentColor" />
+                            </svg>}
+                    </button>
+                    {isCustomFeed
+                        ? <details className={classes(rowMenuStyle)}>
+                            <summary
+                                className={classes(rowMenuTriggerStyle)}
+                                aria-label="Episode actions"
+                                title="Episode actions"
                             >
-                                {isRemoving ? 'Removing...' : 'Remove article'}
-                            </button>
-                        </div>
-                    </details>
-                </td>
-                : null}
+                                <svg className={classes(rowMenuTriggerIconStyle)} viewBox="0 0 24 24" aria-hidden="true">
+                                    <path fill="currentColor" d="M12 7a1.75 1.75 0 1 1 0-3.5A1.75 1.75 0 0 1 12 7m0 7a1.75 1.75 0 1 1 0-3.5A1.75 1.75 0 0 1 12 14m0 7a1.75 1.75 0 1 1 0-3.5A1.75 1.75 0 0 1 12 21" />
+                                </svg>
+                            </summary>
+                            <div className={classes(rowMenuPopoverStyle)}>
+                                <button
+                                    className={classes(removeArticleMenuButtonStyle)}
+                                    disabled={isRemoving || isGeneratingEpisode}
+                                    onClick={(event) => {
+                                        void onRemoveArticle(episode)
+                                        event.currentTarget.closest('details')?.removeAttribute('open')
+                                    }}
+                                    title={isGeneratingEpisode ? 'Wait for generation to finish before removing this article' : 'Remove article'}
+                                    type="button"
+                                >
+                                    {isRemoving ? 'Removing...' : 'Remove article'}
+                                </button>
+                            </div>
+                        </details>
+                        : null}
+                </div>
+            </td>
         </tr>
         {isSelected
             ? <tr className={classes(expandedTrStyle)}>
@@ -830,6 +862,19 @@ function buildEpisodeProgressLabel(episode: Episode) {
     return `${progressPercent}%`
 }
 
+function buildCollapsedGenerateButtonLabel(episode: Episode) {
+    if (episode.status == 'queued')
+        return 'Audio generation is queued'
+
+    if (episode.status == 'generating')
+        return 'Audio generation is in progress'
+
+    if (episode.audioReady)
+        return 'Audio has already been generated'
+
+    return 'Generate'
+}
+
 function buildEpisodeDurationLabel(episode: Episode) {
     if (episode.durationSeconds == null)
         return '—'
@@ -1046,11 +1091,11 @@ let thStatusStyle = style('episodesThStatus', {
 })
 
 let thActionsStyle = style('episodesThActions', {
-    width: 120,
+    width: 144,
     textAlign: 'right',
     $: {
         '@media (max-width: 920px)': {
-            width: 64
+            width: 124
         }
     }
 })
@@ -1146,8 +1191,48 @@ let transcriptButtonCompactStyle = style('episodesTranscriptButtonCompact', {
 
 let tdActionsStyle = style('episodesTdActions', {
     textAlign: 'right',
-    whiteSpace: 'nowrap',
     position: 'relative'
+})
+
+let rowActionGroupStyle = style('episodesRowActionGroup', {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 10,
+    flexWrap: 'nowrap'
+})
+
+let rowIconButtonStyle = style('episodesRowIconButton', {
+    width: 38,
+    height: 38,
+    minHeight: 38,
+    borderRadius: 999,
+    padding: 0,
+    justifyContent: 'center',
+    flexShrink: 0,
+    backgroundColor: 'color-mix(in srgb, var(--panel) 86%, var(--bg))',
+    boxShadow: '0 1px 2px rgba(16, 24, 40, 0.06)',
+    $: {
+        '&:disabled': {
+            opacity: 0.55,
+            boxShadow: 'none'
+        }
+    }
+})
+
+let rowActionIconStyle = style('episodesRowActionIcon', {
+    width: 22,
+    height: 22,
+    display: 'block',
+    overflow: 'visible'
+})
+
+let rowActionBusyDotStyle = style('episodesRowActionBusyDot', {
+    width: 12,
+    height: 12,
+    borderRadius: 999,
+    backgroundColor: 'currentColor',
+    display: 'block'
 })
 
 let expandedTrStyle = style('episodesExpandedTr', {

@@ -188,12 +188,18 @@ export async function listFeedEpisodes(feedId: number): Promise<EpisodeView[]> {
 export async function buildPodcastFeedXml(feed: Feed) {
     await syncFeed(feed, 20)
 
-    let episodes = database
+    let storedEpisodes = database
         .select()
         .from(articlesTable)
         .where(and(eq(articlesTable.feedId, feed.id), eq(articlesTable.archived, false)))
         .orderBy(desc(articlesTable.publishedAt), desc(articlesTable.createdAt))
         .all()
+    let episodes = (await Promise.all(storedEpisodes.map(async episode => {
+        if (await isEpisodePublishedInPodcastFeed(feed, episode))
+            return episode
+
+        return null
+    }))).filter((episode): episode is Article => episode != null)
 
     let safeTitle = escapeXml(feed.name)
     let safeDescription = escapeXml(feed.description || '')
@@ -1491,6 +1497,14 @@ async function buildRssItem(feed: Feed, article: Article) {
     let title = escapeXml(article.title)
 
     return `<item><title>${title}</title><guid isPermaLink="false">${escapeXml(guid)}</guid><link>${escapeXml(article.sourceUrl)}</link><description>${description}</description><enclosure url="${escapeXml(enclosureUrl)}" length="${enclosureLength}" type="audio/mpeg"/>${durationTag}${published}</item>`
+}
+
+async function isEpisodePublishedInPodcastFeed(feed: Feed, article: Article) {
+    if (article.generationMode != 'manual')
+        return true
+
+    let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
+    return await Bun.file(resolvedPath).exists()
 }
 
 function formatPodcastDuration(value: number) {

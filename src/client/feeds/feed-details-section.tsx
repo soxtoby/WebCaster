@@ -119,7 +119,7 @@ export function FeedDetailsSection(props: {
                     <TextSelectField
                         label="Generation mode"
                         value={draft.generationMode}
-                        options={['on_demand', 'every_episode']}
+                        options={['on_demand', 'manual', 'every_episode']}
                         onChange={value => updateDraft('generationMode', value)}
                     />
                     <TextSelectField
@@ -297,10 +297,11 @@ function TextSelectField(props: {
             {props.options.map(option => (
                 <option key={option} value={option}>
                     {option === 'on_demand' ? 'On demand' :
-                        option === 'every_episode' ? 'Every episode' :
-                            option === 'feed_article' ? 'Feed article' :
-                                option === 'source_page' ? 'Source page' :
-                                    option === 'custom' ? 'Custom' : option}
+                        option === 'manual' ? 'Manual' :
+                            option === 'every_episode' ? 'Every episode' :
+                                option === 'feed_article' ? 'Feed article' :
+                                    option === 'source_page' ? 'Source page' :
+                                        option === 'custom' ? 'Custom' : option}
                 </option>
             ))}
         </select>

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- Manual generation mode where episodes won't appear in the podcast feed until you generate the audio.
+
 ### Fixed
 - Fixed feed images for certain feeds.
 - Should be more usable on mobile.

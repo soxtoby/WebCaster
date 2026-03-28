@@ -13,7 +13,7 @@ export const FeedInput = pipe(
         generationMode: pipe(
             string('Generation mode is required'),
             trim(),
-            check((value) => value == 'on_demand' || value == 'every_episode', 'Generation mode must be on_demand or every_episode')
+            check((value) => value == 'on_demand' || value == 'manual' || value == 'every_episode', 'Generation mode must be on_demand, manual or every_episode')
         ),
         showArchivedEpisodes: boolean(),
         contentSource: pipe(
