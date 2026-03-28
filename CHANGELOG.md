@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## V1.0.8
 
 ### Added
 - Manual generation mode where episodes won't appear in the podcast feed until you generate the audio.
