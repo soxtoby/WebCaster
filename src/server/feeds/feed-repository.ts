@@ -1,11 +1,16 @@
 import { desc, eq, sql } from "drizzle-orm"
 import { database } from "../db"
-import { feedsTable } from "../db/schema"
+import { articlesTable, feedsTable, type Feed } from "../db/schema"
 import type { FeedInput } from "./feed-types"
 
-export function listFeeds() {
+export type FeedSummary = Feed & { latestEpisodePublishedAt: string | null }
+
+export function listFeeds(): FeedSummary[] {
     return database
-        .select()
+        .select({
+            ...feedsTable,
+            latestEpisodePublishedAt: sql<string | null>`(select max(coalesce(${articlesTable.publishedAt}, ${articlesTable.createdAt})) from ${articlesTable} where ${articlesTable.feedId} = ${feedsTable.id})`
+        })
         .from(feedsTable)
         .orderBy(desc(feedsTable.id))
         .all()

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react"
 import { classes, cssRules, style } from "stylemap"
 import { api } from "../api"
 import icon from "../icon.svg"
-import { feedCollection } from "./feed-collections"
+import { feedCollection, type FeedWithEpisodes } from "./feed-collections"
 import { FeedDetailsSection, type FeedDraft } from "./feed-details-section"
 import { SettingsDialog } from "./settings-dialog"
 import { type VoiceOption } from "./voice-selector-field"
@@ -13,8 +13,9 @@ export function FeedManagerPage() {
     let [isCreating, setIsCreating] = useState(false)
     let [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>([])
     let [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+    let [seenFeedEpisodes, setSeenFeedEpisodes] = useState<Record<number, string>>(() => loadSeenFeedEpisodes())
 
-    let { data: feeds = [], isLoading, isError } = useLiveQuery(q => q.from({ feedCollection }))
+    let { data: feeds = [], isLoading, isError } = useLiveQuery<FeedWithEpisodes[]>(q => q.from({ feedCollection }))
 
     let selectedFeed = useMemo(() => {
         return feeds.find(feed => feed.id == selectedFeedId) ?? (selectedFeedId && selectedFeedId < 0 ? feeds.at(-1) : null)
@@ -34,8 +35,19 @@ export function FeedManagerPage() {
     }, [feeds, selectedFeedId, isCreating])
 
     useEffect(() => {
+        setSeenFeedEpisodes(current => pruneSeenFeedEpisodes(current, feeds))
+    }, [feeds])
+
+    useEffect(() => {
         void loadVoices()
     }, [])
+
+    useEffect(() => {
+        if (!selectedFeed)
+            return
+
+        setSeenFeedEpisodes(current => markFeedEpisodesSeen(current, selectedFeed.id, selectedFeed.latestEpisodePublishedAt))
+    }, [selectedFeed?.id, selectedFeed?.latestEpisodePublishedAt])
 
     useEffect(() => {
         let mediaQuery = window.matchMedia('(min-width: 921px)')
@@ -167,7 +179,12 @@ export function FeedManagerPage() {
                                 </div>
                             }
                             <div className={classes(feedTextStyle)}>
-                                <p className={classes(feedNameStyle)}>{feed.name || 'Untitled Feed'}</p>
+                                <div className={classes(feedNameRowStyle)}>
+                                    <p className={classes(feedNameStyle)}>{feed.name || 'Untitled Feed'}</p>
+                                    {feedHasUnseenEpisodes(feed, seenFeedEpisodes)
+                                        ? <span className={classes(newEpisodeBadgeStyle)}>New</span>
+                                        : null}
+                                </div>
                                 <p className={classes(feedMetaStyle)}>{feed.description || feed.rssUrl || 'Custom feed'}</p>
                             </div>
                         </div>
@@ -231,6 +248,7 @@ export function FeedManagerPage() {
                 rssUrl,
                 description: null,
                 imageUrl: null,
+                latestEpisodePublishedAt: null,
                 podcastSlug: '',
                 showArchivedEpisodes: draft.showArchivedEpisodes,
                 createdAt: new Date().toISOString(),
@@ -280,6 +298,118 @@ export function FeedManagerPage() {
             }, 1000)
         }
     }
+}
+
+type SeenEpisodesMap = Record<number, string>
+
+function loadSeenFeedEpisodes(): SeenEpisodesMap {
+    try {
+        let stored = typeof localStorage != 'undefined' ? localStorage.getItem('webcaster:feedSeenEpisodes') : null
+        if (!stored)
+            return {}
+
+        let parsed = JSON.parse(stored)
+        if (!parsed || typeof parsed != 'object')
+            return {}
+
+        let result: SeenEpisodesMap = {}
+        for (let entry of Object.entries(parsed)) {
+            let feedId = Number(entry[0])
+            let value = entry[1]
+            if (!Number.isFinite(feedId) || typeof value != 'string')
+                continue
+            result[feedId] = value
+        }
+        return result
+    } catch {
+        return {}
+    }
+}
+
+function persistSeenFeedEpisodes(map: SeenEpisodesMap) {
+    try {
+        if (typeof localStorage == 'undefined')
+            return
+
+        localStorage.setItem('webcaster:feedSeenEpisodes', JSON.stringify(map))
+    } catch {
+    }
+}
+
+function pruneSeenFeedEpisodes(map: SeenEpisodesMap, feeds: FeedWithEpisodes[]) {
+    let feedIds = new Set(feeds.map(feed => feed.id))
+    let hasChanges = false
+    let next = { ...map }
+
+    for (let key of Object.keys(map)) {
+        let feedId = Number(key)
+        if (feedIds.has(feedId))
+            continue
+
+        delete next[feedId]
+        hasChanges = true
+    }
+
+    if (hasChanges)
+        persistSeenFeedEpisodes(next)
+
+    return hasChanges ? next : map
+}
+
+function markFeedEpisodesSeen(map: SeenEpisodesMap, feedId: number, latestEpisodePublishedAt: string | null) {
+    let latestTimestamp = parseTimestamp(latestEpisodePublishedAt)
+    if (!latestTimestamp)
+        return map
+
+    let seenTimestamp = parseTimestamp(map[feedId])
+    if (seenTimestamp && seenTimestamp >= latestTimestamp)
+        return map
+
+    let next = { ...map, [feedId]: latestEpisodePublishedAt! }
+    persistSeenFeedEpisodes(next)
+    return next
+}
+
+function feedHasUnseenEpisodes(feed: FeedWithEpisodes, seenEpisodes: SeenEpisodesMap) {
+    let latestTimestamp = parseTimestamp(feed.latestEpisodePublishedAt)
+    if (!latestTimestamp)
+        return false
+
+    let seenTimestamp = parseTimestamp(seenEpisodes[feed.id])
+    if (!seenTimestamp)
+        return true
+
+    return latestTimestamp > seenTimestamp
+}
+
+function parseTimestamp(value: string | null | undefined) {
+    if (!value)
+        return null
+
+    let parsed = Date.parse(value)
+    if (!Number.isNaN(parsed))
+        return parsed
+
+    let normalized = normalizeSqliteTimestamp(value)
+    if (normalized == value)
+        return null
+
+    let normalizedParsed = Date.parse(normalized)
+    if (Number.isNaN(normalizedParsed))
+        return null
+
+    return normalizedParsed
+}
+
+function normalizeSqliteTimestamp(value: string) {
+    if (!value.includes(' '))
+        return value
+
+    let normalized = value.replace(' ', 'T')
+    if (normalized.includes('Z') || normalized.includes('+'))
+        return normalized
+
+    return `${normalized}Z`
 }
 
 cssRules({
@@ -597,10 +727,27 @@ let feedTextStyle = style('feedText', {
     flex: 1
 })
 
+let feedNameRowStyle = style('feedNameRow', {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6
+})
+
 let feedNameStyle = style('feedName', {
     margin: 0,
     fontSize: 14,
     fontWeight: 650
+})
+
+let newEpisodeBadgeStyle = style('newEpisodeBadge', {
+    padding: '2px 6px',
+    borderRadius: 999,
+    backgroundColor: 'var(--accent)',
+    color: 'var(--accent-text)',
+    fontSize: 11,
+    fontWeight: 650,
+    letterSpacing: '-0.01em',
+    lineHeight: 1.2
 })
 
 let feedMetaStyle = style('feedMeta', {

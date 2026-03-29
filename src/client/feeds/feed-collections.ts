@@ -8,7 +8,9 @@ globalThis.crypto.randomUUID ??= createUuidV4; // Required by tanstack db, but o
 
 export let queryClient = new QueryClient()
 
-export const feedCollection = createCollection(queryCollectionOptions<Feed>({
+export type FeedWithEpisodes = Feed & { latestEpisodePublishedAt: string | null }
+
+export const feedCollection = createCollection(queryCollectionOptions<FeedWithEpisodes>({
     queryClient,
     queryKey: ['feeds'],
     getKey: (feed) => feed.id.toString(),
