@@ -1013,11 +1013,9 @@ let episodesTableScrollerStyle = style('episodesTableScroller', {
     overflow: 'visible',
     $: {
         '@media (max-width: 920px)': {
-            overflowX: 'auto',
+            overflowX: 'hidden',
             overflowY: 'visible',
-            overscrollBehaviorX: 'contain',
-            touchAction: 'pan-x',
-            WebkitOverflowScrolling: 'touch'
+            overscrollBehaviorX: 'none'
         }
     }
 })
@@ -1030,7 +1028,8 @@ let episodesTableStyle = style('episodesTable', {
     minWidth: 620,
     $: {
         '@media (max-width: 920px)': {
-            minWidth: '100%'
+            minWidth: '100%',
+            tableLayout: 'fixed'
         }
     }
 })
@@ -1345,7 +1344,16 @@ let episodeTitleTextStyle = style('episodesTitleText', {
     fontWeight: 500,
     whiteSpace: 'nowrap',
     overflow: 'hidden',
-    textOverflow: 'ellipsis'
+    textOverflow: 'ellipsis',
+    $: {
+        '@media (max-width: 920px)': {
+            whiteSpace: 'normal',
+            overflowWrap: 'anywhere',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical'
+        }
+    }
 })
 
 let episodeTitleRowStyle = style('episodesTitleRow', {
