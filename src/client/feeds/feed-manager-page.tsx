@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react"
 import { classes, cssRules, style } from "stylemap"
 import { api } from "../api"
 import icon from "../icon.svg"
-import { feedCollection, type FeedWithEpisodes } from "./feed-collections"
+import { feedCollection, type FeedSummary } from "./feed-collections"
 import { FeedDetailsSection, type FeedDraft } from "./feed-details-section"
 import { SettingsDialog } from "./settings-dialog"
 import { type VoiceOption } from "./voice-selector-field"
@@ -15,7 +15,7 @@ export function FeedManagerPage() {
     let [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
     let [seenFeedEpisodes, setSeenFeedEpisodes] = useState<Record<number, string>>(() => loadSeenFeedEpisodes())
 
-    let { data: feeds = [], isLoading, isError } = useLiveQuery<FeedWithEpisodes[]>(q => q.from({ feedCollection }))
+    let { data: feeds = [], isLoading, isError } = useLiveQuery<FeedSummary[]>(q => q.from({ feedCollection }))
 
     let selectedFeed = useMemo(() => {
         return feeds.find(feed => feed.id == selectedFeedId) ?? (selectedFeedId && selectedFeedId < 0 ? feeds.at(-1) : null)
@@ -336,7 +336,7 @@ function persistSeenFeedEpisodes(map: SeenEpisodesMap) {
     }
 }
 
-function pruneSeenFeedEpisodes(map: SeenEpisodesMap, feeds: FeedWithEpisodes[]) {
+function pruneSeenFeedEpisodes(map: SeenEpisodesMap, feeds: FeedSummary[]) {
     let feedIds = new Set(feeds.map(feed => feed.id))
     let hasChanges = false
     let next = { ...map }
@@ -370,7 +370,7 @@ function markFeedEpisodesSeen(map: SeenEpisodesMap, feedId: number, latestEpisod
     return next
 }
 
-function feedHasUnseenEpisodes(feed: FeedWithEpisodes, seenEpisodes: SeenEpisodesMap) {
+function feedHasUnseenEpisodes(feed: FeedSummary, seenEpisodes: SeenEpisodesMap) {
     let latestTimestamp = parseTimestamp(feed.latestEpisodePublishedAt)
     if (!latestTimestamp)
         return false
@@ -386,19 +386,21 @@ function parseTimestamp(value: string | null | undefined) {
     if (!value)
         return null
 
+    let sqliteLike = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(value)
+    if (sqliteLike) {
+        let normalized = normalizeSqliteTimestamp(value)
+        let normalizedParsed = Date.parse(normalized)
+        if (Number.isNaN(normalizedParsed))
+            return null
+
+        return normalizedParsed
+    }
+
     let parsed = Date.parse(value)
-    if (!Number.isNaN(parsed))
-        return parsed
-
-    let normalized = normalizeSqliteTimestamp(value)
-    if (normalized == value)
+    if (Number.isNaN(parsed))
         return null
 
-    let normalizedParsed = Date.parse(normalized)
-    if (Number.isNaN(normalizedParsed))
-        return null
-
-    return normalizedParsed
+    return parsed
 }
 
 function normalizeSqliteTimestamp(value: string) {

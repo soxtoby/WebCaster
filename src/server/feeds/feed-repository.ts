@@ -9,7 +9,7 @@ export function listFeeds(): FeedSummary[] {
     return database
         .select({
             ...feedsTable,
-            latestEpisodePublishedAt: sql<string | null>`(select max(coalesce(${articlesTable.publishedAt}, ${articlesTable.createdAt})) from ${articlesTable} where ${articlesTable.feedId} = ${feedsTable.id})`
+            latestEpisodePublishedAt: sql<string | null>`(select max(coalesce(datetime(${articlesTable.publishedAt}), datetime(${articlesTable.createdAt}))) from ${articlesTable} where ${articlesTable.feedId} = ${feedsTable.id})`
         })
         .from(feedsTable)
         .orderBy(desc(feedsTable.id))
