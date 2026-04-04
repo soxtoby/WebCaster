@@ -283,7 +283,7 @@ export function EpisodesSection({
             return
 
         if (regenerate) {
-            let confirmed = window.confirm(`Re-generate the audio for "${episode.title}"? This will replace the current version.`)
+            let confirmed = window.confirm(`Regenerate the audio for "${episode.title}"? This will replace the current version.`)
             if (!confirmed)
                 return
 
@@ -813,13 +813,13 @@ function EpisodeExpandedPanel({
                     </span>
                     {episode.audioReady
                         ? <button
-                            aria-label="Re-generate audio"
+                            aria-label="Regenerate audio"
                             className={classes(regenerateAudioLinkButtonStyle)}
                             onClick={() => void onGenerateAudio(episode, true)}
                             type="button"
-                            title="Re-generate audio"
+                            title="Regenerate audio"
                         >
-                            Re-generate audio
+                            Regenerate audio
                         </button>
                         : null}
                 </div>

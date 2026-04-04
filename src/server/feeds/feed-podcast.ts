@@ -288,6 +288,7 @@ export async function regenerateEpisodeAudio(feedId: number, episodeKey: string)
         await unlink(resolvedPath)
     }
     catch {
+        // Ignore missing or already-replaced files before the new generation starts.
     }
 
     return await queueEpisodeGeneration(feed.id, article.episodeKey)
