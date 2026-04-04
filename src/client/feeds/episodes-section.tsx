@@ -322,7 +322,7 @@ export function EpisodesSection({
             let message = cause instanceof Error
                 ? cause.message
                 : regenerate
-                    ? 'Failed to re-generate audio'
+                    ? 'Failed to regenerate audio'
                     : 'Failed to generate audio'
             onError(message)
             await loadEpisodes(feedId)
