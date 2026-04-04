@@ -275,15 +275,30 @@ export function EpisodesSection({
         }
     }
 
-    async function generateEpisodeAudio(episode: Episode) {
-        if (episode.audioReady || episode.status == 'generating' || episode.status == 'queued')
+    async function generateEpisodeAudio(episode: Episode, regenerate = false) {
+        if (episode.status == 'generating' || episode.status == 'queued')
             return
+
+        if (!regenerate && episode.audioReady)
+            return
+
+        if (regenerate) {
+            let confirmed = window.confirm(`Re-generate the audio for "${episode.title}"? This will replace the current version.`)
+            if (!confirmed)
+                return
+
+            if (activeEpisodeKey == episode.episodeKey) {
+                setActiveEpisodeKey(null)
+                setActiveEpisodeAudioUrl('')
+            }
+        }
 
         onError('')
         onStatus('')
         setEpisodes(current => current.map(entry => entry.episodeKey == episode.episodeKey
             ? {
                 ...entry,
+                audioReady: false,
                 status: 'queued',
                 errorMessage: null,
                 progressPercent: 0,
@@ -296,11 +311,19 @@ export function EpisodesSection({
         ))
 
         try {
-            await api.feeds.generateEpisode.mutate({ id: feedId, episodeKey: episode.episodeKey })
+            await api.feeds.generateEpisode.mutate({
+                id: feedId,
+                episodeKey: episode.episodeKey,
+                regenerate
+            })
             await loadEpisodes(feedId)
         }
         catch (cause) {
-            let message = cause instanceof Error ? cause.message : 'Failed to generate audio'
+            let message = cause instanceof Error
+                ? cause.message
+                : regenerate
+                    ? 'Failed to re-generate audio'
+                    : 'Failed to generate audio'
             onError(message)
             await loadEpisodes(feedId)
         }
@@ -433,7 +456,7 @@ interface EpisodeTableRowProps {
     onUpdateArchived: (episodeKey: string, archived: boolean) => Promise<void>
     onCancelGeneration: (episode: Episode) => Promise<void>
     onPlay: (episode: Episode) => void
-    onGenerateAudio: (episode: Episode) => Promise<void>
+    onGenerateAudio: (episode: Episode, regenerate?: boolean) => Promise<void>
 }
 
 function EpisodeTableRow({
@@ -621,7 +644,7 @@ interface EpisodeExpandedPanelProps {
     onUpdateArchived: (episodeKey: string, archived: boolean) => Promise<void>
     onCancelGeneration: (episode: Episode) => Promise<void>
     onPlay: (episode: Episode) => void
-    onGenerateAudio: (episode: Episode) => Promise<void>
+    onGenerateAudio: (episode: Episode, regenerate?: boolean) => Promise<void>
 }
 
 function EpisodeExpandedPanel({
@@ -780,13 +803,26 @@ function EpisodeExpandedPanel({
                         </button>
                     )}
                 </div>
-                <span className={classes(episodeDetailHintStyle)}>
-                    {isGeneratingEpisode
-                        ? buildEpisodeProgressLabel(episode)
-                        : episode.audioReady
-                            ? (isPlaying ? 'Playback is active for this episode.' : 'Audio is ready to play.')
-                            : 'Generate narrated audio for this episode.'}
-                </span>
+                <div className={classes(episodeDetailMetaStyle)}>
+                    <span className={classes(episodeDetailHintStyle)}>
+                        {isGeneratingEpisode
+                            ? buildEpisodeProgressLabel(episode)
+                            : episode.audioReady
+                                ? (isPlaying ? 'Playback is active for this episode.' : 'Audio is ready to play.')
+                                : 'Generate narrated audio for this episode.'}
+                    </span>
+                    {episode.audioReady
+                        ? <button
+                            aria-label="Re-generate audio"
+                            className={classes(regenerateAudioLinkButtonStyle)}
+                            onClick={() => void onGenerateAudio(episode, true)}
+                            type="button"
+                            title="Re-generate audio"
+                        >
+                            Re-generate audio
+                        </button>
+                        : null}
+                </div>
             </div>
         </div>
     </div>
@@ -1758,9 +1794,32 @@ let episodeDetailHintStyle = style('episodesDetailHint', {
     color: 'var(--muted)'
 })
 
+let episodeDetailMetaStyle = style('episodesDetailMeta', {
+    display: 'grid',
+    gap: 6,
+    justifyItems: 'start'
+})
+
 let episodeDetailAudioContentStyle = style('episodesDetailAudioContent', {
     display: 'flex',
     flexDirection: 'column',
     gap: 10,
     minWidth: 0
+})
+
+let regenerateAudioLinkButtonStyle = style('episodesRegenerateAudioLinkButton', {
+    border: 'none',
+    backgroundColor: 'transparent',
+    color: 'var(--muted)',
+    padding: 0,
+    fontSize: 11,
+    fontWeight: 600,
+    cursor: 'pointer',
+    textDecoration: 'underline',
+    textUnderlineOffset: 2,
+    $: {
+        '&:hover': {
+            color: 'var(--accent)'
+        }
+    }
 })

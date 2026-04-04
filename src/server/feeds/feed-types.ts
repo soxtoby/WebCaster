@@ -1,4 +1,4 @@
-import { boolean, check, type InferOutput, integer, minLength, minValue, number, object, pipe, string, trim, url } from "valibot"
+import { boolean, check, type InferOutput, integer, minLength, minValue, number, object, optional, pipe, string, trim, url } from "valibot"
 
 export type FeedInput = InferOutput<typeof FeedInput>
 export const FeedInput = pipe(
@@ -69,7 +69,8 @@ export const EpisodeTranscriptInput = object({
 export type EpisodeActionInput = InferOutput<typeof EpisodeActionInput>
 export const EpisodeActionInput = object({
     ...FeedIdInput.entries,
-    episodeKey: pipe(string('Episode key is required'), trim(), minLength(1, 'Episode key is required'))
+    episodeKey: pipe(string('Episode key is required'), trim(), minLength(1, 'Episode key is required')),
+    regenerate: optional(boolean())
 })
 
 export type EpisodeArchiveInput = InferOutput<typeof EpisodeArchiveInput>
