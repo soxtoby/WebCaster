@@ -287,8 +287,9 @@ export async function regenerateEpisodeAudio(feedId: number, episodeKey: string)
     try {
         await unlink(resolvedPath)
     }
-    catch {
-        // Ignore missing or already-replaced files before the new generation starts.
+    catch (error) {
+        if (!isMissingFileError(error))
+            console.error("Failed to remove existing audio before regeneration for feed", feed.id, "episode", article.episodeKey, error)
     }
 
     return await queueEpisodeGeneration(feed.id, article.episodeKey)
@@ -939,6 +940,13 @@ async function writeStreamToFile(stream: ReadableStream<Uint8Array>, outputPath:
 function throwIfEpisodeGenerationCancelled(job: EpisodeGenerationJob) {
     if (job.cancelled)
         throw new Error(episodeGenerationCancelledMessage)
+}
+
+function isMissingFileError(error: unknown) {
+    return typeof error == 'object'
+        && error != null
+        && 'code' in error
+        && error.code == 'ENOENT'
 }
 
 function markArticlePending(feedId: number, episodeKey: string) {
