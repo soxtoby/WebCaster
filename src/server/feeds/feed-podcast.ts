@@ -266,6 +266,35 @@ export async function queueEpisodeGeneration(feedId: number, episodeKey: string)
     }
 }
 
+export async function regenerateEpisodeAudio(feedId: number, episodeKey: string) {
+    let feed = database.select().from(feedsTable).where(eq(feedsTable.id, feedId)).get()
+    if (!feed)
+        return { ok: false as const, reason: 'feed_not_found' as const }
+
+    let article = findArticleByEpisodeKey(feed.id, episodeKey)
+    if (!article)
+        return { ok: false as const, reason: 'episode_not_found' as const }
+
+    if (article.status == 'generating' || article.status == 'queued')
+        return {
+            ok: true as const,
+            status: article.status == 'generating' ? 'generating' as const : 'queued' as const
+        }
+
+    let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
+    markArticlePending(feed.id, article.episodeKey)
+
+    try {
+        await unlink(resolvedPath)
+    }
+    catch (error) {
+        if (!isMissingFileError(error))
+            console.error("Failed to remove existing audio before regeneration for feed", feed.id, "episode", article.episodeKey, error)
+    }
+
+    return await queueEpisodeGeneration(feed.id, article.episodeKey)
+}
+
 export async function cancelEpisodeGeneration(feedId: number, episodeKey: string) {
     let feed = database.select().from(feedsTable).where(eq(feedsTable.id, feedId)).get()
     if (!feed)
@@ -911,6 +940,13 @@ async function writeStreamToFile(stream: ReadableStream<Uint8Array>, outputPath:
 function throwIfEpisodeGenerationCancelled(job: EpisodeGenerationJob) {
     if (job.cancelled)
         throw new Error(episodeGenerationCancelledMessage)
+}
+
+function isMissingFileError(error: unknown) {
+    return typeof error == 'object'
+        && error != null
+        && 'code' in error
+        && error.code == 'ENOENT'
 }
 
 function markArticlePending(feedId: number, episodeKey: string) {

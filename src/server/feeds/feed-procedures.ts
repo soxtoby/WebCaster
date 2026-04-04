@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server"
 import { procedure } from "../trpc/trpc"
 import { fetchFeed, type ParsedFeedArticle } from "./feed-parsing"
-import { addManualArticle, cancelEpisodeGeneration as stopEpisodeGeneration, getEpisodeTranscript, insertFeedArticles, listFeedEpisodes, queueEpisodeGeneration as requestEpisodeGeneration, regenerateEpisodeTranscript as rebuildEpisodeTranscript, removeManualArticle, setEpisodeArchived, setEpisodeVoiceOverride, updateEpisodeTranscript as saveEpisodeTranscript } from "./feed-podcast"
+import { addManualArticle, cancelEpisodeGeneration as stopEpisodeGeneration, getEpisodeTranscript, insertFeedArticles, listFeedEpisodes, queueEpisodeGeneration as requestEpisodeGeneration, regenerateEpisodeAudio as requestEpisodeRegeneration, regenerateEpisodeTranscript as rebuildEpisodeTranscript, removeManualArticle, setEpisodeArchived, setEpisodeVoiceOverride, updateEpisodeTranscript as saveEpisodeTranscript } from "./feed-podcast"
 import { createFeed as createFeedRecord, deleteFeedById as deleteFeedRecordById, getFeedById as getFeedRecordById, listFeeds as listFeedRecords, updateFeedById as updateFeedRecordById } from "./feed-repository"
 import { AddManualArticleInput, EpisodeActionInput, EpisodeArchiveInput, EpisodeTranscriptInput, EpisodeTranscriptUpdateInput, EpisodeVoiceInput, FeedIdInput, FeedInput, FeedUpdateInput, RemoveManualArticleInput } from "./feed-types"
 
@@ -165,7 +165,9 @@ export const setEpisodeArchive = procedure
 export const generateEpisode = procedure
     .input(EpisodeActionInput)
     .mutation(async ({ input }) => {
-        let result = await requestEpisodeGeneration(input.id, input.episodeKey)
+        let result = input.regenerate
+            ? await requestEpisodeRegeneration(input.id, input.episodeKey)
+            : await requestEpisodeGeneration(input.id, input.episodeKey)
 
         if (!result.ok) {
             if (result.reason == 'feed_not_found')
