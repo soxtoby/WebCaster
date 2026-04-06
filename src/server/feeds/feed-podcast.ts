@@ -16,6 +16,7 @@ type EpisodeView = {
     sourceUrl: string
     episodePath: string
     publishedAt: string | null
+    episodeTimestamp: string
     durationSeconds: number | null
     isDurationEstimated: boolean
     archived: boolean
@@ -133,6 +134,7 @@ export async function listFeedEpisodes(feedId: number): Promise<EpisodeView[]> {
             title: articlesTable.title,
             sourceUrl: articlesTable.sourceUrl,
             publishedAt: articlesTable.publishedAt,
+            createdAt: articlesTable.createdAt,
             summary: articlesTable.summary,
             content: articlesTable.content,
             transcript: articlesTable.transcript,
@@ -169,6 +171,7 @@ export async function listFeedEpisodes(feedId: number): Promise<EpisodeView[]> {
             sourceUrl: row.sourceUrl,
             episodePath: `/feed/${feed.podcastSlug}/${episodeKey}`,
             publishedAt: row.publishedAt,
+            episodeTimestamp: row.publishedAt || `${row.createdAt.replace(' ', 'T')}.000Z`,
             durationSeconds: duration.durationSeconds,
             isDurationEstimated: duration.isDurationEstimated,
             archived: row.archived,

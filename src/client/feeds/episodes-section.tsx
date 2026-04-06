@@ -11,6 +11,7 @@ type Episode = {
     title: string
     sourceUrl: string
     publishedAt: string | null
+    episodeTimestamp: string
     durationSeconds: number | null
     isDurationEstimated: boolean
     archived: boolean
@@ -29,6 +30,7 @@ type Episode = {
 export interface EpisodesSectionProps {
     feed: Feed
     feedTitle: string
+    openedFeedSeenEpisodeAt: string | null
     contentSource: string
     showArchivedEpisodes: boolean
     voiceOptions: VoiceOption[]
@@ -40,6 +42,7 @@ export interface EpisodesSectionProps {
 export function EpisodesSection({
     feed,
     feedTitle,
+    openedFeedSeenEpisodeAt,
     contentSource,
     showArchivedEpisodes,
     voiceOptions,
@@ -131,9 +134,7 @@ export function EpisodesSection({
 
     let visibleEpisodes = episodes.filter(episode => showArchivedEpisodes || !episode.archived)
     let sortedEpisodes = [...visibleEpisodes].sort((a, b) => {
-        if (!a.publishedAt) return 1
-        if (!b.publishedAt) return -1
-        return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
+        return new Date(b.episodeTimestamp).getTime() - new Date(a.episodeTimestamp).getTime()
     })
     let summaryColumnCount = isNarrowViewport ? 2 : 5
 
@@ -196,6 +197,7 @@ export function EpisodesSection({
                             {sortedEpisodes.map(episode => <EpisodeTableRow
                                 key={episode.episodeKey}
                                 episode={episode}
+                                isNew={isNewEpisode(episode, openedFeedSeenEpisodeAt)}
                                 isSelected={selectedEpisodeKey == episode.episodeKey}
                                 isPlaying={activeEpisodeKey == episode.episodeKey}
                                 activeAudioUrl={activeEpisodeAudioUrl}
@@ -438,6 +440,7 @@ export function EpisodesSection({
 
 interface EpisodeTableRowProps {
     episode: Episode
+    isNew: boolean
     isSelected: boolean
     isPlaying: boolean
     activeAudioUrl: string
@@ -461,6 +464,7 @@ interface EpisodeTableRowProps {
 
 function EpisodeTableRow({
     episode,
+    isNew,
     isSelected,
     isPlaying,
     activeAudioUrl,
@@ -513,6 +517,7 @@ function EpisodeTableRow({
                     <div className={classes(episodeRowTextStyle)}>
                         <div className={classes(episodeTitleRowStyle)}>
                             <div className={classes(episodeTitleTextStyle)} title={episode.title}>{episode.title}</div>
+                            {isNew ? <span className={classes(newBadgeStyle)}>New</span> : null}
                             {episode.archived ? <span className={classes(archivedBadgeStyle)}>Archived</span> : null}
                         </div>
                         {episode.errorMessage ? <div className={classes(episodeErrorTextStyle)}>{episode.errorMessage}</div> : null}
@@ -612,6 +617,7 @@ function EpisodeTableRow({
                 <td className={classes(expandedTdStyle)} colSpan={summaryColumnCount}>
                     <EpisodeExpandedPanel
                         episode={episode}
+                        isNew={isNew}
                         feedId={feedId}
                         feedTitle={feedTitle}
                         voiceOptions={voiceOptions}
@@ -633,6 +639,7 @@ function EpisodeTableRow({
 
 interface EpisodeExpandedPanelProps {
     episode: Episode
+    isNew: boolean
     feedId: number | null
     feedTitle: string
     voiceOptions: VoiceOption[]
@@ -649,6 +656,7 @@ interface EpisodeExpandedPanelProps {
 
 function EpisodeExpandedPanel({
     episode,
+    isNew,
     feedId,
     feedTitle,
     voiceOptions,
@@ -680,6 +688,7 @@ function EpisodeExpandedPanel({
             <div className={classes(episodeMetaListStyle)}>
                 <span className={classes(episodeMetaPillStyle)}>{dateStr || 'Unpublished'}</span>
                 <span className={classes(episodeMetaPillStyle)}>{buildEpisodeDurationLabel(episode)}</span>
+                {isNew ? <span className={classes(newBadgeStyle)}>New</span> : null}
                 <span className={classes([statusBadgeStyle, episode.status == 'ready' && completedBadgeStyle])}>
                     {episode.status.replace('_', ' ')}
                 </span>
@@ -920,6 +929,13 @@ function buildEpisodeDurationLabel(episode: Episode) {
         return '—'
 
     return episode.isDurationEstimated ? `~${formatted}` : formatted
+}
+
+function isNewEpisode(episode: Episode, openedFeedSeenEpisodeAt: string | null) {
+    if (!openedFeedSeenEpisodeAt)
+        return true
+
+    return episode.episodeTimestamp > openedFeedSeenEpisodeAt
 }
 
 function formatSeconds(value: number) {
@@ -1483,6 +1499,19 @@ let archivedBadgeStyle = style('episodesArchivedBadge', {
     textTransform: 'uppercase',
     color: '#92400e',
     backgroundColor: 'color-mix(in srgb, #f59e0b 18%, white)'
+})
+
+let newBadgeStyle = style('episodesNewBadge', {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '3px 9px',
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: '0.03em',
+    textTransform: 'uppercase',
+    color: 'var(--accent)',
+    backgroundColor: 'color-mix(in srgb, var(--accent) 14%, white)'
 })
 
 let completedBadgeStyle = style('episodesCompletedBadge', {

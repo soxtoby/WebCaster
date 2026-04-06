@@ -1,11 +1,41 @@
 import { desc, eq, sql } from "drizzle-orm"
 import { database } from "../db"
-import { feedsTable } from "../db/schema"
+import type { Feed } from "../db/schema"
+import { articlesTable, feedsTable } from "../db/schema"
 import type { FeedInput } from "./feed-types"
 
+export type FeedListItem = Feed & {
+    latestEpisodeAt: string | null
+}
+
 export function listFeeds() {
+    let latestEpisodeAt = sql<string | null>`(
+        select max(
+            coalesce(
+                ${articlesTable.publishedAt},
+                replace(${articlesTable.createdAt}, ' ', 'T') || '.000Z'
+            )
+        )
+        from ${articlesTable}
+        where ${articlesTable.feedId} = ${feedsTable.id}
+    )`
+
     return database
-        .select()
+        .select({
+            id: feedsTable.id,
+            name: feedsTable.name,
+            rssUrl: feedsTable.rssUrl,
+            description: feedsTable.description,
+            imageUrl: feedsTable.imageUrl,
+            voice: feedsTable.voice,
+            generationMode: feedsTable.generationMode,
+            contentSource: feedsTable.contentSource,
+            showArchivedEpisodes: feedsTable.showArchivedEpisodes,
+            podcastSlug: feedsTable.podcastSlug,
+            createdAt: feedsTable.createdAt,
+            updatedAt: feedsTable.updatedAt,
+            latestEpisodeAt
+        })
         .from(feedsTable)
         .orderBy(desc(feedsTable.id))
         .all()

@@ -7,8 +7,11 @@ import { api } from "../api"
 globalThis.crypto.randomUUID ??= createUuidV4; // Required by tanstack db, but only available in secure context
 
 export let queryClient = new QueryClient()
+export type FeedListItem = Feed & {
+    latestEpisodeAt: string | null
+}
 
-export const feedCollection = createCollection(queryCollectionOptions<Feed>({
+export const feedCollection = createCollection(queryCollectionOptions<FeedListItem>({
     queryClient,
     queryKey: ['feeds'],
     getKey: (feed) => feed.id.toString(),

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react"
 import { classes, cssRules, style } from "stylemap"
 import { api } from "../api"
 import icon from "../icon.svg"
-import { feedCollection } from "./feed-collections"
+import { feedCollection, type FeedListItem } from "./feed-collections"
 import { FeedDetailsSection, type FeedDraft } from "./feed-details-section"
 import { SettingsDialog } from "./settings-dialog"
 import { type VoiceOption } from "./voice-selector-field"
@@ -13,6 +13,8 @@ export function FeedManagerPage() {
     let [isCreating, setIsCreating] = useState(false)
     let [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>([])
     let [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+    let [seenEpisodeMap, setSeenEpisodeMap] = useState<SeenEpisodeMap>(() => loadSeenEpisodeMap())
+    let [openedFeedSeenEpisodeAt, setOpenedFeedSeenEpisodeAt] = useState<string | null>(null)
 
     let { data: feeds = [], isLoading, isError } = useLiveQuery(q => q.from({ feedCollection }))
 
@@ -70,6 +72,29 @@ export function FeedManagerPage() {
             window.removeEventListener('keydown', handleKeyDown)
         }
     }, [isMobileMenuOpen])
+
+    useEffect(() => {
+        if (!selectedFeed || isCreating) {
+            setOpenedFeedSeenEpisodeAt(null)
+            return
+        }
+
+        setOpenedFeedSeenEpisodeAt(seenEpisodeMap[selectedFeed.id.toString()] ?? null)
+    }, [selectedFeed?.id, isCreating])
+
+    useEffect(() => {
+        if (!selectedFeed || isCreating)
+            return
+
+        setSeenEpisodeMap(current => {
+            let next = markFeedAsSeen(current, selectedFeed)
+            if (next == current)
+                return current
+
+            persistSeenEpisodeMap(next)
+            return next
+        })
+    }, [selectedFeed, isCreating])
 
     return <div className={classes(pageStyle)}>
         <header className={classes(headerStyle)}>
@@ -149,29 +174,36 @@ export function FeedManagerPage() {
                 {isError ? <p className={classes(errorStyle)}>Could not load feeds</p> : null}
                 {!isLoading && feeds.length == 0 ? <p className={classes(emptyStyle)}>No feeds yet.</p> : null}
                 <div className={classes(listStyle)}>
-                    {feeds.map(feed => <button
-                        key={feed.id}
-                        className={classes([feedCardStyle, selectedFeedId == feed.id && feedCardSelectedStyle])}
-                        onClick={() => {
-                            setSelectedFeedId(feed.id)
-                            setIsCreating(false)
-                            setIsMobileMenuOpen(false)
-                        }}
-                        type="button"
-                    >
-                        <div className={classes(feedCardContentStyle)}>
-                            {feed.imageUrl
-                                ? <img src={feed.imageUrl} alt="" className={classes(feedImageStyle)} />
-                                : <div className={classes(feedPlaceholderStyle)}>
-                                    {(feed.name || 'Untitled')[0]?.toUpperCase() || 'U'}
+                    {feeds.map(feed => {
+                        let hasUnseenEpisodes = hasFeedUnseenEpisodes(feed, seenEpisodeMap)
+
+                        return <button
+                            key={feed.id}
+                            className={classes([feedCardStyle, selectedFeedId == feed.id && feedCardSelectedStyle])}
+                            onClick={() => {
+                                setSelectedFeedId(feed.id)
+                                setIsCreating(false)
+                                setIsMobileMenuOpen(false)
+                            }}
+                            type="button"
+                        >
+                            <div className={classes(feedCardContentStyle)}>
+                                {feed.imageUrl
+                                    ? <img src={feed.imageUrl} alt="" className={classes(feedImageStyle)} />
+                                    : <div className={classes(feedPlaceholderStyle)}>
+                                        {(feed.name || 'Untitled')[0]?.toUpperCase() || 'U'}
+                                    </div>
+                                }
+                                <div className={classes(feedTextStyle)}>
+                                    <div className={classes(feedNameRowStyle)}>
+                                        <p className={classes(feedNameStyle)}>{feed.name || 'Untitled Feed'}</p>
+                                        {hasUnseenEpisodes ? <span className={classes(feedNewBadgeStyle)}>New</span> : null}
+                                    </div>
+                                    <p className={classes(feedMetaStyle)}>{feed.description || feed.rssUrl || 'Custom feed'}</p>
                                 </div>
-                            }
-                            <div className={classes(feedTextStyle)}>
-                                <p className={classes(feedNameStyle)}>{feed.name || 'Untitled Feed'}</p>
-                                <p className={classes(feedMetaStyle)}>{feed.description || feed.rssUrl || 'Custom feed'}</p>
                             </div>
-                        </div>
-                    </button>)}
+                        </button>
+                    })}
                 </div>
                 {!isLoading
                     ? <div className={classes(listActionRowStyle)}>
@@ -194,6 +226,7 @@ export function FeedManagerPage() {
                 ? <FeedDetailsSection
                     key={selectedFeed?.id ?? (isCreating ? 'create' : 'none')}
                     feed={selectedFeed ?? null}
+                    openedFeedSeenEpisodeAt={openedFeedSeenEpisodeAt}
                     onCancel={() => {
                         setSelectedFeedId(null)
                         setIsCreating(false)
@@ -231,6 +264,7 @@ export function FeedManagerPage() {
                 rssUrl,
                 description: null,
                 imageUrl: null,
+                latestEpisodeAt: null,
                 podcastSlug: '',
                 showArchivedEpisodes: draft.showArchivedEpisodes,
                 createdAt: new Date().toISOString(),
@@ -279,6 +313,66 @@ export function FeedManagerPage() {
                 window.location.href = result.redirectUrl!
             }, 1000)
         }
+    }
+}
+
+type SeenEpisodeMap = Record<string, string>
+let feedSeenStorageKey = 'webcaster.feed-seen-episodes'
+
+function hasFeedUnseenEpisodes(feed: FeedListItem, seenEpisodeMap: SeenEpisodeMap) {
+    let latestEpisodeAt = feed.latestEpisodeAt
+    if (!latestEpisodeAt)
+        return false
+
+    return seenEpisodeMap[feed.id.toString()] != latestEpisodeAt
+}
+
+function loadSeenEpisodeMap(): SeenEpisodeMap {
+    if (typeof window == 'undefined')
+        return {}
+
+    try {
+        let raw = window.localStorage.getItem(feedSeenStorageKey)
+        if (!raw)
+            return {}
+
+        let parsed = JSON.parse(raw)
+        if (!parsed || typeof parsed != 'object')
+            return {}
+
+        let seenEpisodeMap: SeenEpisodeMap = {}
+        for (let [key, value] of Object.entries(parsed))
+            if (typeof value == 'string')
+                seenEpisodeMap[key] = value
+
+        return seenEpisodeMap
+    } catch {
+        return {}
+    }
+}
+
+function persistSeenEpisodeMap(seenEpisodeMap: SeenEpisodeMap) {
+    if (typeof window == 'undefined')
+        return
+
+    try {
+        window.localStorage.setItem(feedSeenStorageKey, JSON.stringify(seenEpisodeMap))
+    } catch {
+    }
+}
+
+function markFeedAsSeen(seenEpisodeMap: SeenEpisodeMap, feed: FeedListItem) {
+    let latestEpisodeAt = feed.latestEpisodeAt
+    if (!latestEpisodeAt)
+        return seenEpisodeMap
+
+    let key = feed.id.toString()
+    if (seenEpisodeMap[key] == latestEpisodeAt)
+        return seenEpisodeMap
+
+    return {
+        ...seenEpisodeMap,
+        [key]: latestEpisodeAt
     }
 }
 
@@ -597,10 +691,31 @@ let feedTextStyle = style('feedText', {
     flex: 1
 })
 
+let feedNameRowStyle = style('feedNameRow', {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 0
+})
+
 let feedNameStyle = style('feedName', {
     margin: 0,
     fontSize: 14,
     fontWeight: 650
+})
+
+let feedNewBadgeStyle = style('feedNewBadge', {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '2px 8px',
+    borderRadius: 999,
+    backgroundColor: 'color-mix(in srgb, var(--accent) 14%, white)',
+    color: 'var(--accent)',
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: '0.02em',
+    textTransform: 'uppercase',
+    flexShrink: 0
 })
 
 let feedMetaStyle = style('feedMeta', {

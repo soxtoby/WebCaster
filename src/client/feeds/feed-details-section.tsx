@@ -15,6 +15,7 @@ export type FeedDraft = {
 
 export function FeedDetailsSection(props: {
     feed: Feed | null
+    openedFeedSeenEpisodeAt: string | null
     onCancel: () => void
     onDelete: () => void
     onSave: (draft: FeedDraft) => Promise<void>
@@ -188,6 +189,7 @@ export function FeedDetailsSection(props: {
                 ? <EpisodesSection
                     feed={props.feed}
                     feedTitle={draft.name || 'Unnamed Feed'}
+                    openedFeedSeenEpisodeAt={props.openedFeedSeenEpisodeAt}
                     contentSource={draft.contentSource}
                     showArchivedEpisodes={draft.showArchivedEpisodes}
                     voiceOptions={resolvedVoiceOptions}

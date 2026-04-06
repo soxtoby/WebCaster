@@ -4,6 +4,7 @@
 
 ### Added
 - Images less than 100x100 pixels are now ignored when generating descriptions to avoid irrelevant images like icons and logos.
+- Unseen episode badges on the feeds and episodes lists.
 
 ## V1.0.8
 
