@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Images less than 100x100 pixels are now ignored when generating descriptions to avoid irrelevant images like icons and logos.
+
 ## V1.0.8
 
 ### Added

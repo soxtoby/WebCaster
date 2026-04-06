@@ -1,3 +1,4 @@
+import bufferImageSize from "buffer-image-size"
 import { listImageDescriptionSettings } from "../settings/settings-repository"
 import { type ImageDescriptionProviderSettings, type ImageDescriptionSettings } from "../settings/settings-types"
 
@@ -6,10 +7,20 @@ type ImageTag = {
     src: string
     alt: string
     title: string
+    width: number | null
+    height: number | null
+}
+
+type ImageAsset = {
+    mimeType: string
+    data: string
+    width: number | null
+    height: number | null
 }
 
 let descriptionCache = new Map<string, string>()
 let imageDescriptionTimeoutMs = 15000
+let minimumImageDescriptionSizePx = 100
 
 export async function replaceImagesWithDescriptions(html: string, sourceUrl: string | null) {
     return await replaceImagesWithDescriptionsWithOptions(html, sourceUrl, { forceRegenerate: false })
@@ -46,6 +57,9 @@ async function describeImage(
     if (!settings.enabled)
         return fallback
 
+    if (shouldIgnoreImageBySize(image.width, image.height))
+        return ''
+
     let resolvedUrl = resolveImageUrl(image.src, sourceUrl)
     if (!resolvedUrl)
         return fallback
@@ -58,7 +72,11 @@ async function describeImage(
             return cached
     }
 
-    let described = await describeWithProvider(settings.provider, providerSettings, resolvedUrl, image.alt, image.title)
+    let imageAsset = await getImageAssetForDescription(settings.provider, resolvedUrl, image.width, image.height)
+    if (shouldIgnoreImageBySize(imageAsset?.width ?? image.width, imageAsset?.height ?? image.height))
+        return ''
+
+    let described = await describeWithProvider(settings.provider, providerSettings, resolvedUrl, image.alt, image.title, imageAsset)
     if (!described)
         return fallback
 
@@ -71,13 +89,14 @@ async function describeWithProvider(
     settings: ImageDescriptionProviderSettings,
     imageUrl: string,
     altText: string,
-    titleText: string
+    titleText: string,
+    imageAsset: ImageAsset | null
 ) {
     if (provider == 'openai')
         return await describeWithOpenAi(settings, imageUrl, altText, titleText)
 
     if (provider == 'gemini')
-        return await describeWithGemini(settings, imageUrl, altText, titleText)
+        return await describeWithGemini(settings, altText, titleText, imageAsset)
 
     return null
 }
@@ -144,18 +163,17 @@ async function describeWithOpenAi(settings: ImageDescriptionProviderSettings, im
     }
 }
 
-async function describeWithGemini(settings: ImageDescriptionProviderSettings, imageUrl: string, altText: string, titleText: string) {
+async function describeWithGemini(settings: ImageDescriptionProviderSettings, altText: string, titleText: string, imageAsset: ImageAsset | null) {
     if (!settings.apiKey.trim())
+        return null
+
+    if (!imageAsset)
         return null
 
     let controller = new AbortController()
     let timeoutHandle = setTimeout(() => controller.abort(), imageDescriptionTimeoutMs)
 
     try {
-        let imageData = await fetchImageData(imageUrl, controller.signal)
-        if (!imageData)
-            return null
-
         let response = await fetch(buildGeminiUrl(settings.baseUrl, settings.model), {
             method: 'POST',
             signal: controller.signal,
@@ -183,8 +201,8 @@ async function describeWithGemini(settings: ImageDescriptionProviderSettings, im
                             },
                             {
                                 inlineData: {
-                                    mimeType: imageData.mimeType,
-                                    data: imageData.data
+                                    mimeType: imageAsset.mimeType,
+                                    data: imageAsset.data
                                 }
                             }
                         ]
@@ -220,7 +238,9 @@ function parseImageTag(tag: string): ImageTag {
         tag,
         src: readAttribute(tag, 'src'),
         alt: decodeEntities(readAttribute(tag, 'alt')),
-        title: decodeEntities(readAttribute(tag, 'title'))
+        title: decodeEntities(readAttribute(tag, 'title')),
+        width: readDimensionAttribute(tag, 'width'),
+        height: readDimensionAttribute(tag, 'height')
     }
 }
 
@@ -244,6 +264,18 @@ function resolveImageUrl(imageUrl: string, sourceUrl: string | null) {
     }
 
     return imageUrl
+}
+
+async function getImageAssetForDescription(
+    provider: ImageDescriptionSettings['provider'],
+    imageUrl: string,
+    width: number | null,
+    height: number | null
+) {
+    if (provider == 'gemini' || width == null || height == null)
+        return await fetchImageAsset(imageUrl)
+
+    return null
 }
 
 function buildImageContextPrompt(altText: string, titleText: string) {
@@ -290,20 +322,75 @@ function buildGeminiUrl(baseUrl: string, model: string) {
     return `${normalizedBase}${path}/models/${encodeURIComponent(model)}:generateContent`
 }
 
-async function fetchImageData(imageUrl: string, signal: AbortSignal) {
-    let response = await fetch(imageUrl, { signal })
-    if (!response.ok)
+async function fetchImageAsset(imageUrl: string, signal?: AbortSignal): Promise<ImageAsset | null> {
+    let controller = signal ? null : new AbortController()
+    let timeoutHandle = controller
+        ? setTimeout(() => controller.abort(), imageDescriptionTimeoutMs)
+        : null
+
+    try {
+        let response = await fetch(imageUrl, { signal: signal || controller?.signal })
+        if (!response.ok)
+            return null
+
+        let mimeType = normalizeImageMimeType(response.headers.get('content-type'), imageUrl)
+        if (!mimeType)
+            return null
+
+        let bytes = await response.arrayBuffer()
+        let buffer = Buffer.from(bytes)
+        let size = readImageSize(buffer)
+
+        return {
+            mimeType,
+            data: buffer.toString('base64'),
+            width: size?.width ?? null,
+            height: size?.height ?? null
+        }
+    }
+    catch {
+        return null
+    }
+    finally {
+        if (timeoutHandle)
+            clearTimeout(timeoutHandle)
+    }
+}
+
+function shouldIgnoreImageBySize(width: number | null, height: number | null) {
+    if (width == null || height == null)
+        return false
+
+    return width < minimumImageDescriptionSizePx || height < minimumImageDescriptionSizePx
+}
+
+function readDimensionAttribute(tag: string, name: string) {
+    let value = readAttribute(tag, name)
+    if (!value)
         return null
 
-    let mimeType = normalizeImageMimeType(response.headers.get('content-type'), imageUrl)
-    if (!mimeType)
+    let match = value.match(/\d+(?:\.\d+)?/)
+    if (!match)
         return null
 
-    let bytes = await response.arrayBuffer()
+    let parsed = Number(match[0])
+    if (!Number.isFinite(parsed))
+        return null
 
-    return {
-        mimeType,
-        data: Buffer.from(bytes).toString('base64')
+    return parsed
+}
+
+function readImageSize(buffer: Buffer) {
+    try {
+        let size = bufferImageSize(buffer)
+
+        return {
+            width: size.width,
+            height: size.height
+        }
+    }
+    catch {
+        return null
     }
 }
 
