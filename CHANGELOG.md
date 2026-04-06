@@ -1,10 +1,14 @@
 # Changelog
 
-## Unreleased
+## V1.0.9
 
 ### Added
 - Images less than 100x100 pixels are now ignored when generating descriptions to avoid irrelevant images like icons and logos.
 - Unseen episode badges on the feeds and episodes lists.
+- Episode audio can be re-generated from the episode details.
+
+### Fixed
+- No more horizontal scrolling on mobile.
 
 ## V1.0.8
 
