@@ -1,3 +1,4 @@
+import { Readability } from "@mozilla/readability"
 import { replaceImagesWithDescriptionsWithOptions } from "./image-description"
 
 export type SourceArticleFeedInput = {
@@ -17,7 +18,7 @@ export async function fetchSourceArticle(sourceUrl: string, options: { forceRege
             return null
 
         let html = await response.text()
-        let contentHtml = extractReadableArticleHtml(html)
+        let contentHtml = extractReadableArticleHtml(html, normalizedUrl)
         let text = await extractReadableArticleText(html, normalizedUrl, options)
 
         return {
@@ -74,16 +75,16 @@ export function extractSourceArticleMetadata(html: string) {
     }
 }
 
-function extractReadableArticleHtml(html: string) {
-    let withoutScripts = html
-        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-        .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+function extractReadableArticleHtml(html: string, sourceUrl: string) {
+    let readabilityContent = extractReadabilityContentHtml(html, sourceUrl)
+    if (readabilityContent)
+        return readabilityContent
 
+    let withoutScripts = stripKnownNonContentTags(html)
     let articleMatch = withoutScripts.match(/<article[\s\S]*?<\/article>/i)
     let mainMatch = withoutScripts.match(/<main[\s\S]*?<\/main>/i)
     let bodyMatch = withoutScripts.match(/<body[\s\S]*?<\/body>/i)
-    let candidate = articleMatch?.[0] || mainMatch?.[0] || bodyMatch?.[0] || withoutScripts
+    let candidate = stripLikelyNonContentBlocks(articleMatch?.[0] || mainMatch?.[0] || bodyMatch?.[0] || withoutScripts)
     let preview = cleanText(candidate || '')
 
     if (!preview)
@@ -93,7 +94,7 @@ function extractReadableArticleHtml(html: string) {
 }
 
 async function extractReadableArticleText(html: string, sourceUrl: string, options: { forceRegenerateImageDescriptions: boolean }) {
-    let candidate = extractReadableArticleHtml(html) || html
+    let candidate = extractReadableArticleHtml(html, sourceUrl) || html
     let withImageDescriptions = await replaceImagesWithDescriptionsWithOptions(candidate, sourceUrl, {
         forceRegenerate: options.forceRegenerateImageDescriptions
     })
@@ -111,6 +112,56 @@ async function extractReadableArticleText(html: string, sourceUrl: string, optio
         return ''
 
     return text
+}
+
+function extractReadabilityContentHtml(html: string, sourceUrl: string) {
+    try {
+        let parser = new DOMParser()
+        let document = parser.parseFromString(ensureBaseHref(html, sourceUrl), 'text/html')
+        let article = new Readability(document, {
+            charThreshold: 120
+        }).parse()
+        let content = stripLikelyNonContentBlocks(article?.content || '')
+
+        if (!cleanText(content))
+            return null
+
+        return content.trim() || null
+    }
+    catch {
+        return null
+    }
+}
+
+function stripKnownNonContentTags(html: string) {
+    return html
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+        .replace(/<template[\s\S]*?<\/template>/gi, ' ')
+}
+
+function stripLikelyNonContentBlocks(html: string) {
+    return stripKnownNonContentTags(html)
+        .replace(/<(header|footer|nav|aside|form|button|dialog|svg)[^>]*>[\s\S]*?<\/\1>/gi, ' ')
+        .replace(/<(div|section|ul|ol)[^>]*(id|class)=["'][^"']*(nav|menu|header|footer|sidebar|breadcrumb|breadcrumbs|share|social|related|promo|newsletter|subscribe|comment|comments|pagination|toolbar)[^"']*["'][^>]*>[\s\S]*?<\/\1>/gi, ' ')
+        .replace(/<(div|section)[^>]*role=["'](?:navigation|banner|contentinfo|complementary)["'][^>]*>[\s\S]*?<\/\1>/gi, ' ')
+        .trim()
+}
+
+function ensureBaseHref(html: string, sourceUrl: string) {
+    let baseTag = `<base href="${escapeHtmlAttribute(sourceUrl)}">`
+
+    if (/<base\s/i.test(html))
+        return html
+
+    if (/<head[\s>]/i.test(html))
+        return html.replace(/<head([^>]*)>/i, `<head$1>${baseTag}`)
+
+    if (/<html[\s>]/i.test(html))
+        return html.replace(/<html([^>]*)>/i, `<html$1><head>${baseTag}</head>`)
+
+    return `<head>${baseTag}</head>${html}`
 }
 
 function extractMetaTagContent(html: string, property: string) {
@@ -165,6 +216,14 @@ function decodeHtmlEntities(value: string) {
         .replace(/&#39;|&apos;/g, "'")
         .replace(/&quot;/g, '"')
         .trim()
+}
+
+function escapeHtmlAttribute(value: string) {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
 }
 
 function buildFallbackArticleTitle(sourceUrl: string) {
