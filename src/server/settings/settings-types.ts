@@ -2,7 +2,7 @@ import { hostname as osHostname } from "os"
 import { boolean, check, number, object, optional, picklist, pipe, string, trim, type InferOutput } from "valibot"
 import { defaultImageDescriptionProviderSettings as sharedDefaultImageDescriptionProviderSettings } from "../../shared/image-description-defaults"
 
-export let ttsProviders = ['inworld', 'openai', 'elevenlabs', 'lemonfox'] as const
+export let ttsProviders = ['inworld', 'openai', 'elevenlabs', 'lemonfox', 'voicebox'] as const
 export type TtsProvider = (typeof ttsProviders)[number]
 
 export type TtsProviderSettings = {
@@ -111,7 +111,8 @@ export const SettingsInput = object({
         inworld: ProviderSettingsInput,
         openai: ProviderSettingsInput,
         elevenlabs: ProviderSettingsInput,
-        lemonfox: ProviderSettingsInput
+        lemonfox: ProviderSettingsInput,
+        voicebox: ProviderSettingsInput
     }),
     imageDescription: ImageDescriptionSettingsInput,
     episodeGeneration: EpisodeGenerationSettingsInput,

@@ -16,6 +16,7 @@ export type TtsSettingsDraft = {
     openai: ProviderSettingsDraft
     elevenlabs: ProviderSettingsDraft
     lemonfox: ProviderSettingsDraft
+    voicebox: ProviderSettingsDraft
 }
 
 export type ServerSettingsDraft = {
@@ -70,6 +71,29 @@ let imageDescriptionProviderDefaults = {
     }
 } as const
 
+let ttsProviderMetadata = {
+    elevenlabs: {
+        label: 'ElevenLabs',
+        requiresApiKey: true
+    },
+    inworld: {
+        label: 'Inworld',
+        requiresApiKey: true
+    },
+    lemonfox: {
+        label: 'Lemonfox',
+        requiresApiKey: true
+    },
+    openai: {
+        label: 'OpenAI',
+        requiresApiKey: true
+    },
+    voicebox: {
+        label: 'Voicebox',
+        requiresApiKey: false
+    }
+} as const
+
 export function SettingsDialog(props: {
     id: string
     onSaved: (result: { redirectUrl?: string }) => void
@@ -95,7 +119,8 @@ export function SettingsDialog(props: {
         { id: 'elevenlabs', label: 'ElevenLabs' },
         { id: 'inworld', label: 'Inworld' },
         { id: 'lemonfox', label: 'Lemonfox' },
-        { id: 'openai', label: 'OpenAI' }
+        { id: 'openai', label: 'OpenAI' },
+        { id: 'voicebox', label: 'Voicebox' }
     ]
 
     return <dialog
@@ -409,6 +434,11 @@ function createDefaultSettingsDraft(): TtsSettingsDraft {
             enabled: false,
             apiKey: '',
             baseUrl: 'https://api.lemonfox.ai/v1'
+        },
+        voicebox: {
+            enabled: false,
+            apiKey: '',
+            baseUrl: 'http://localhost:17493'
         }
     }
 }
@@ -542,6 +572,9 @@ function ProviderPanel(props: {
                     autoComplete="off"
                     spellCheck="false"
                 />
+                {props.provider == 'voicebox'
+                    ? <span className={classes(hintStyle)}>API key is optional for local Voicebox servers.</span>
+                    : null}
             </label>
 
             <label className={classes(fieldGroupStyle)}>
@@ -559,15 +592,16 @@ function ProviderPanel(props: {
 }
 
 function validateSettings(settings: TtsSettingsDraft, imageDescription: ImageDescriptionSettingsDraft) {
-    let providers: Array<{ name: string; value: ProviderSettingsDraft }> = [
-        { name: 'Inworld', value: settings.inworld },
-        { name: 'OpenAI', value: settings.openai },
-        { name: 'ElevenLabs', value: settings.elevenlabs },
-        { name: 'Lemonfox', value: settings.lemonfox }
+    let providers: Array<{ name: string; value: ProviderSettingsDraft; requiresApiKey: boolean }> = [
+        { name: 'Inworld', value: settings.inworld, requiresApiKey: ttsProviderMetadata.inworld.requiresApiKey },
+        { name: 'OpenAI', value: settings.openai, requiresApiKey: ttsProviderMetadata.openai.requiresApiKey },
+        { name: 'ElevenLabs', value: settings.elevenlabs, requiresApiKey: ttsProviderMetadata.elevenlabs.requiresApiKey },
+        { name: 'Lemonfox', value: settings.lemonfox, requiresApiKey: ttsProviderMetadata.lemonfox.requiresApiKey },
+        { name: 'Voicebox', value: settings.voicebox, requiresApiKey: ttsProviderMetadata.voicebox.requiresApiKey }
     ]
 
     for (let provider of providers) {
-        if (provider.value.enabled && !provider.value.apiKey.trim())
+        if (provider.requiresApiKey && provider.value.enabled && !provider.value.apiKey.trim())
             return `${provider.name} API key is required when enabled`
 
         if (!provider.value.baseUrl.trim())

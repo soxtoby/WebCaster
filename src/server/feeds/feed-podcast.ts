@@ -2,9 +2,9 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm"
 import { mkdir, unlink } from "node:fs/promises"
 import { database } from "../db"
 import { articlesTable, feedsTable, type Article, type Feed } from "../db/schema"
-import { episodePath, podcastDirectory } from "../paths"
+import { audioContentTypes, episodePath, podcastDirectory, supportedAudioFileExtensions, type AudioFileExtension } from "../paths"
 import { getCachedVoiceById, getEpisodeGenerationSettings, getServerBaseUrl, listProviderSettings } from "../settings/settings-repository"
-import { type TtsProvider } from "../settings/settings-types"
+import { ttsProviders, type TtsProvider } from "../settings/settings-types"
 import { streamSpeech, type StreamedAudio } from "../tts/tts"
 import { fetchArticlePage, fetchFeed, type ParsedFeedArticle } from "./feed-parsing"
 import { replaceImagesWithDescriptionsWithOptions } from "./image-description"
@@ -74,9 +74,8 @@ export async function resetInterruptedEpisodeGeneration() {
     for (let article of interrupted) {
         let feed = database.select().from(feedsTable).where(eq(feedsTable.id, article.feedId)).get()
         if (feed && article.status == 'generating') {
-            let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
             try {
-                await unlink(resolvedPath)
+                await deleteEpisodeAudioFiles(feed, article)
             }
             catch {
             }
@@ -151,7 +150,7 @@ export async function listFeedEpisodes(feedId: number): Promise<EpisodeView[]> {
 
     return await Promise.all(episodes.map(async row => {
         let episodeKey = resolveEpisodeKey(row.episodeKey, row.title, row.sourceUrl)
-        let audioReady = await Bun.file(episodePath(feed.podcastSlug, episodeKey)).exists()
+        let audioReady = (await findEpisodeAudioAsset(feed, row)) != null
         let progress = getEpisodeProgress(feedId, row.episodeKey)
         let duration = await resolveEpisodeDuration(feed, {
             feedId,
@@ -221,10 +220,9 @@ export async function streamEpisodeAudio(feed: Feed, episodeKey: string, options
     if (!article)
         return new Response(isHeadRequest ? null : 'Episode not found', { status: 404 })
 
-    let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
-    let preferredFile = Bun.file(resolvedPath)
-    if (await preferredFile.exists())
-        return buildEpisodeAudioResponse(preferredFile, isHeadRequest)
+    let existingAudio = await findEpisodeAudioAsset(feed, article)
+    if (existingAudio)
+        return buildEpisodeAudioResponse(existingAudio.file, existingAudio.contentType, isHeadRequest)
 
     if (isHeadRequest)
         return new Response(null, { status: 202 })
@@ -238,9 +236,9 @@ export async function streamEpisodeAudio(feed: Feed, episodeKey: string, options
         return new Response(message, { status: 400 })
     }
 
-    preferredFile = Bun.file(resolvedPath)
-    if (await preferredFile.exists())
-        return buildEpisodeAudioResponse(preferredFile, false, true)
+    existingAudio = await findEpisodeAudioAsset(feed, article)
+    if (existingAudio)
+        return buildEpisodeAudioResponse(existingAudio.file, existingAudio.contentType, false, true)
 
     return new Response('Generated audio was not found', { status: 500 })
 }
@@ -254,10 +252,9 @@ export async function queueEpisodeGeneration(feedId: number, episodeKey: string)
     if (!article)
         return { ok: false as const, reason: 'episode_not_found' as const }
 
-    let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
-    let file = Bun.file(resolvedPath)
-    if (await file.exists()) {
-        markArticleReady(feed.id, article.episodeKey, buildAudioUrl(feed, article))
+    let existingAudio = await findEpisodeAudioAsset(feed, article)
+    if (existingAudio) {
+        markArticleReady(feed.id, article.episodeKey, buildAudioUrl(feed, article, existingAudio.extension))
         return { ok: true as const, status: 'ready' as const }
     }
 
@@ -284,11 +281,10 @@ export async function regenerateEpisodeAudio(feedId: number, episodeKey: string)
             status: article.status == 'generating' ? 'generating' as const : 'queued' as const
         }
 
-    let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
     markArticlePending(feed.id, article.episodeKey)
 
     try {
-        await unlink(resolvedPath)
+        await deleteEpisodeAudioFiles(feed, article)
     }
     catch (error) {
         if (!isMissingFileError(error))
@@ -358,10 +354,8 @@ export async function setEpisodeVoiceOverride(feedId: number, episodeKey: string
 
     clearEpisodeProgress(feed.id, article.episodeKey)
 
-    let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
-
     try {
-        await unlink(resolvedPath)
+        await deleteEpisodeAudioFiles(feed, article)
     }
     catch {
     }
@@ -626,10 +620,8 @@ export async function removeManualArticle(feedId: number, episodeKey: string) {
 
     clearEpisodeProgress(feed.id, article.episodeKey)
 
-    let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
-
     try {
-        await unlink(resolvedPath)
+        await deleteEpisodeAudioFiles(feed, article)
     }
     catch {
     }
@@ -646,10 +638,9 @@ async function generateAndStoreAudio(feed: Feed, article: Article) {
 }
 
 async function scheduleEpisodeGeneration(feed: Feed, article: Article) {
-    let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
-    let file = Bun.file(resolvedPath)
-    if (await file.exists()) {
-        markArticleReady(feed.id, article.episodeKey, buildAudioUrl(feed, article))
+    let existingAudio = await findEpisodeAudioAsset(feed, article)
+    if (existingAudio) {
+        markArticleReady(feed.id, article.episodeKey, buildAudioUrl(feed, article, existingAudio.extension))
         return
     }
 
@@ -714,10 +705,9 @@ async function runEpisodeGenerationJob(job: EpisodeGenerationJob) {
         if (!article)
             throw new Error('Episode not found')
 
-        let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
-        let file = Bun.file(resolvedPath)
-        if (await file.exists()) {
-            markArticleReady(feed.id, article.episodeKey, buildAudioUrl(feed, article))
+        let existingAudio = await findEpisodeAudioAsset(feed, article)
+        if (existingAudio) {
+            markArticleReady(feed.id, article.episodeKey, buildAudioUrl(feed, article, existingAudio.extension))
             job.resolve()
             return
         }
@@ -727,6 +717,12 @@ async function runEpisodeGenerationJob(job: EpisodeGenerationJob) {
         let generated = await createAudioStream(feed, article, progress => {
             updateArticleChunkProgress(feed.id, article.episodeKey, progress.chunksProcessed, progress.chunksTotal)
         })
+
+        let outputExtension = getAudioExtensionFromMimeType(generated.audio.mimeType)
+        if (!outputExtension)
+            throw new Error(`Unsupported generated audio format: ${generated.audio.mimeType}`)
+
+        let outputPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl), outputExtension)
 
         throwIfEpisodeGenerationCancelled(job)
 
@@ -741,7 +737,7 @@ async function runEpisodeGenerationJob(job: EpisodeGenerationJob) {
         )
 
         try {
-            await persistAudioStream(generated.audio.stream, resolvedPath, article, feed, job)
+            await persistAudioStream(generated.audio.stream, outputPath, outputExtension, article, feed, job)
         } finally {
             stopEstimatedProgress()
         }
@@ -808,6 +804,13 @@ type GeneratedAudio = {
     textLength: number
 }
 
+type EpisodeAudioAsset = {
+    path: string
+    file: Bun.BunFile
+    extension: AudioFileExtension
+    contentType: string
+}
+
 async function createAudioStream(feed: Feed, article: Article, onChunkProgress?: (progress: { chunksProcessed: number; chunksTotal: number }) => void): Promise<GeneratedAudio> {
     let text = await getStoredEpisodeTranscript(feed, article, {
         forceRegenerateTranscript: false,
@@ -837,7 +840,7 @@ async function createAudioStream(feed: Feed, article: Article, onChunkProgress?:
 }
 
 function isTtsProvider(value: string): value is TtsProvider {
-    return value == 'inworld' || value == 'openai' || value == 'elevenlabs' || value == 'lemonfox'
+    return ttsProviders.includes(value as TtsProvider)
 }
 
 async function getStoredEpisodeTranscript(
@@ -880,12 +883,12 @@ function storeEpisodeTranscript(article: Article, transcript: string) {
         .run()
 }
 
-async function persistAudioStream(stream: ReadableStream<Uint8Array>, outputPath: string, article: Article, feed: Feed, job: EpisodeGenerationJob) {
+async function persistAudioStream(stream: ReadableStream<Uint8Array>, outputPath: string, outputExtension: AudioFileExtension, article: Article, feed: Feed, job: EpisodeGenerationJob) {
     try {
         await mkdir(podcastDirectory(feed.podcastSlug), { recursive: true })
         await writeStreamToFile(stream, outputPath, job)
         throwIfEpisodeGenerationCancelled(job)
-        markArticleReady(feed.id, article.episodeKey, buildAudioUrl(feed, article))
+        markArticleReady(feed.id, article.episodeKey, buildAudioUrl(feed, article, outputExtension))
     }
     catch (error) {
         try {
@@ -1207,12 +1210,14 @@ async function resolveEpisodeDuration(feed: Pick<Feed, 'podcastSlug'>, article: 
 }
 
 async function getStoredAudioDurationSeconds(feed: Pick<Feed, 'podcastSlug'>, article: Pick<Article, 'feedId' | 'episodeKey' | 'title' | 'sourceUrl'>) {
-    let file = Bun.file(episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl)))
-    if (!await file.exists())
+    let audio = await findEpisodeAudioAsset(feed, article)
+    if (!audio)
         return null
 
-    let bytes = new Uint8Array(await file.arrayBuffer())
-    let durationSeconds = parseMp3DurationSeconds(bytes)
+    let bytes = new Uint8Array(await audio.file.arrayBuffer())
+    let durationSeconds = audio.extension == 'wav'
+        ? parseWavDurationSeconds(bytes)
+        : parseMp3DurationSeconds(bytes)
     if (durationSeconds == null)
         return null
 
@@ -1526,8 +1531,9 @@ function ensureStoredEpisodeKey(article: Article, episodeKey: string) {
 }
 
 async function buildRssItem(feed: Feed, article: Article) {
-    let enclosureUrl = buildAudioUrl(feed, article)
-    let enclosureLength = await getEnclosureLength(feed, article)
+    let enclosure = await resolveEpisodeEnclosure(feed, article)
+    let enclosureUrl = enclosure.url
+    let enclosureLength = enclosure.length
     let guid = article.sourceUrl || article.guid || enclosureUrl
     let published = article.publishedAt ? `<pubDate>${new Date(article.publishedAt).toUTCString()}</pubDate>` : ''
     let duration = await resolveEpisodeDuration(feed, article)
@@ -1535,15 +1541,14 @@ async function buildRssItem(feed: Feed, article: Article) {
     let description = escapeXml(buildEpisodeDescription(article))
     let title = escapeXml(article.title)
 
-    return `<item><title>${title}</title><guid isPermaLink="false">${escapeXml(guid)}</guid><link>${escapeXml(article.sourceUrl)}</link><description>${description}</description><enclosure url="${escapeXml(enclosureUrl)}" length="${enclosureLength}" type="audio/mpeg"/>${durationTag}${published}</item>`
+    return `<item><title>${title}</title><guid isPermaLink="false">${escapeXml(guid)}</guid><link>${escapeXml(article.sourceUrl)}</link><description>${description}</description><enclosure url="${escapeXml(enclosureUrl)}" length="${enclosureLength}" type="${enclosure.contentType}"/>${durationTag}${published}</item>`
 }
 
 async function isEpisodePublishedInPodcastFeed(feed: Feed, article: Article) {
     if (article.generationMode != 'manual')
         return true
 
-    let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
-    return await Bun.file(resolvedPath).exists()
+    return (await findEpisodeAudioAsset(feed, article)) != null
 }
 
 function formatPodcastDuration(value: number) {
@@ -1626,14 +1631,13 @@ function truncateDescriptionPreview(value: string, maxLength: number) {
 }
 
 async function getEnclosureLength(feed: Feed, article: Pick<Article, 'episodeKey' | 'title' | 'sourceUrl'>) {
-    let resolvedPath = episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))
-    let file = Bun.file(resolvedPath)
-    return await file.exists() ? file.size : 0
+    let audio = await findEpisodeAudioAsset(feed, article)
+    return audio?.file.size || 0
 }
 
-function buildEpisodeAudioResponse(file: Bun.BunFile, isHeadRequest: boolean, noStore = false) {
+function buildEpisodeAudioResponse(file: Bun.BunFile, contentType: string, isHeadRequest: boolean, noStore = false) {
     let headers = new Headers({
-        'content-type': 'audio/mpeg'
+        'content-type': contentType
     })
 
     if (file.size > 0)
@@ -1657,13 +1661,102 @@ function escapeXml(value: string) {
         .replace(/'/g, '&apos;')
 }
 
-function buildAudioUrl(feed: Feed, article: Pick<Article, 'episodeKey' | 'title' | 'sourceUrl'>) {
+function buildAudioUrl(feed: Pick<Feed, 'podcastSlug' | 'voice'>, article: Pick<Article, 'episodeKey' | 'title' | 'sourceUrl' | 'voice'>, extension?: AudioFileExtension) {
     let episodeKey = resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl)
-    return `${getServerBaseUrl()}/feed/${feed.podcastSlug}/${episodeKey}.mp3`
+    let resolvedExtension = extension || getExpectedEpisodeAudioExtension(feed, article)
+    return `${getServerBaseUrl()}/feed/${feed.podcastSlug}/${episodeKey}.${resolvedExtension}`
 }
 
 function buildFeedUrl(feed: Pick<Feed, 'podcastSlug'>) {
     return `${getServerBaseUrl()}/feed/${feed.podcastSlug}.xml`
+}
+
+async function resolveEpisodeEnclosure(feed: Feed, article: Article) {
+    let audio = await findEpisodeAudioAsset(feed, article)
+    let extension = audio?.extension || getExpectedEpisodeAudioExtension(feed, article)
+
+    return {
+        url: buildAudioUrl(feed, article, extension),
+        length: audio?.file.size || 0,
+        contentType: audio?.contentType || audioContentTypes[extension]
+    }
+}
+
+async function findEpisodeAudioAsset(feed: Pick<Feed, 'podcastSlug'>, article: Pick<Article, 'episodeKey' | 'title' | 'sourceUrl'>, preferredExtension?: AudioFileExtension): Promise<EpisodeAudioAsset | null> {
+    let episodeKey = resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl)
+
+    for (let extension of prioritizeAudioExtensions(preferredExtension)) {
+        let path = episodePath(feed.podcastSlug, episodeKey, extension)
+        let file = Bun.file(path)
+        if (await file.exists()) {
+            return {
+                path,
+                file,
+                extension,
+                contentType: audioContentTypes[extension]
+            }
+        }
+    }
+
+    return null
+}
+
+async function deleteEpisodeAudioFiles(feed: Pick<Feed, 'podcastSlug'>, article: Pick<Article, 'episodeKey' | 'title' | 'sourceUrl'>) {
+    let episodeKey = resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl)
+
+    for (let extension of supportedAudioFileExtensions) {
+        try {
+            await unlink(episodePath(feed.podcastSlug, episodeKey, extension))
+        }
+        catch (error) {
+            if (!isMissingFileError(error))
+                throw error
+        }
+    }
+}
+
+function getExpectedEpisodeAudioExtension(feed: Pick<Feed, 'voice'>, article: Pick<Article, 'voice'>): AudioFileExtension {
+    let selectedVoiceId = article.voice || feed.voice
+    let voice = getCachedVoiceById(selectedVoiceId)
+    if (!voice || !isTtsProvider(voice.provider))
+        return 'mp3'
+
+    return voice.provider == 'voicebox' ? 'wav' : 'mp3'
+}
+
+function prioritizeAudioExtensions(preferredExtension?: AudioFileExtension) {
+    if (!preferredExtension)
+        return supportedAudioFileExtensions
+
+    return [preferredExtension, ...supportedAudioFileExtensions.filter(extension => extension != preferredExtension)]
+}
+
+function getAudioExtensionFromMimeType(mimeType: string): AudioFileExtension | null {
+    let normalized = (mimeType.split(';')[0] || '').trim().toLowerCase()
+    if (normalized == audioContentTypes.mp3 || normalized == 'audio/mp3')
+        return 'mp3'
+
+    if (normalized == audioContentTypes.wav || normalized == 'audio/x-wav')
+        return 'wav'
+
+    return null
+}
+
+function parseWavDurationSeconds(bytes: Uint8Array) {
+    if (bytes.byteLength < 44)
+        return null
+
+    let view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+    let header = String.fromCharCode(...bytes.slice(0, 4))
+    let format = String.fromCharCode(...bytes.slice(8, 12))
+    if (header != 'RIFF' || format != 'WAVE')
+        return null
+
+    let byteRate = view.getUint32(28, true)
+    if (!byteRate)
+        return null
+
+    return Math.max(1, Math.round((bytes.byteLength - 44) / byteRate))
 }
 
 function findArticleByEpisodeKey(feedId: number, episodeKey: string) {
@@ -1722,7 +1815,7 @@ function normalizeEpisodeKey(value: string) {
         decoded = value
     }
 
-    return decoded.trim().replace(/\.mp3$/i, '')
+    return decoded.trim().replace(/\.(mp3|wav)$/i, '')
 }
 
 function slugifyEpisodeTitle(value: string) {

@@ -43,7 +43,7 @@ export function startServer(hostname: string, port: number) {
             }),
             '/feed/:slug/:episodeKey': withRequestLogging(async (request) => {
                 let slug = request.params.slug
-                let episodeKey = request.params.episodeKey.trim().replace(/\.mp3$/i, '')
+                let episodeKey = request.params.episodeKey.trim().replace(/\.(mp3|wav)$/i, '')
                 if (!episodeKey)
                     return new Response('Episode not found', { status: 404 })
 

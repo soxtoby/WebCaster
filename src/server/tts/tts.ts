@@ -3,6 +3,7 @@ import { listElevenLabsVoices, streamElevenLabsSpeech } from "./elevenlabs"
 import { listInworldVoices, streamInworldSpeech } from "./inworld"
 import { listLemonFoxVoices } from "./lemonfox"
 import { listOpenAiVoices, streamOpenAiSpeech } from "./openai"
+import { listVoiceboxVoices, streamVoiceboxSpeech } from "./voicebox"
 
 export type StreamedAudio = {
     stream: ReadableStream<Uint8Array>
@@ -14,7 +15,10 @@ export type StreamSpeechOptions = {
 }
 
 export async function listVoices(providerType: TtsProvider, settings: TtsProviderSettings): Promise<VoiceRecord[]> {
-    if (!settings.enabled || !settings.apiKey.trim())
+    if (!settings.enabled)
+        return []
+
+    if (providerRequiresApiKey(providerType) && !settings.apiKey.trim())
         return []
 
     if (providerType == 'inworld')
@@ -26,12 +30,15 @@ export async function listVoices(providerType: TtsProvider, settings: TtsProvide
     if (providerType == 'elevenlabs')
         return await listElevenLabsVoices(settings)
 
+    if (providerType == 'voicebox')
+        return await listVoiceboxVoices(settings)
+
     return await listLemonFoxVoices(settings)
 }
 
 export async function streamSpeech(provider: TtsProvider, providerVoiceId: string, text: string, providerSettings: Record<TtsProvider, TtsProviderSettings>, options?: StreamSpeechOptions): Promise<StreamedAudio> {
     let settings = providerSettings[provider]
-    if (!settings.enabled || !settings.apiKey.trim())
+    if (!settings.enabled || (providerRequiresApiKey(provider) && !settings.apiKey.trim()))
         throw new Error(`${provider} is not enabled`)
 
     if (provider == 'openai' || provider == 'lemonfox')
@@ -40,6 +47,13 @@ export async function streamSpeech(provider: TtsProvider, providerVoiceId: strin
     if (provider == 'elevenlabs')
         return await streamElevenLabsSpeech(providerVoiceId, text, settings)
 
+    if (provider == 'voicebox')
+        return await streamVoiceboxSpeech(providerVoiceId, text, settings)
+
     return await streamInworldSpeech(providerVoiceId, text, settings, options)
+}
+
+function providerRequiresApiKey(provider: TtsProvider) {
+    return provider != 'voicebox'
 }
 

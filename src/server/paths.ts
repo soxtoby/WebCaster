@@ -9,12 +9,20 @@ export let episodesDirectory = join(appDataDirectory, 'episodes')
 export let updateDir = join(appDataDirectory, 'update')
 export let updateExePath = join(updateDir, 'WebCaster.exe')
 
-export function voicePreviewPath(voiceId: string) {
-	return join(voicePreviewsDirectory, `${sanitizeFileName(voiceId)}.mp3`)
+export let audioContentTypes = {
+	mp3: 'audio/mpeg',
+	wav: 'audio/wav'
+} as const
+
+export type AudioFileExtension = keyof typeof audioContentTypes
+export let supportedAudioFileExtensions = Object.keys(audioContentTypes) as AudioFileExtension[]
+
+export function voicePreviewPath(voiceId: string, extension: AudioFileExtension = 'mp3') {
+	return join(voicePreviewsDirectory, `${sanitizeFileName(voiceId)}.${extension}`)
 }
 
-export function episodePath(podcastSlug: string, episodeKey: string) {
-	return join(podcastDirectory(podcastSlug), `${episodeKey}.mp3`)
+export function episodePath(podcastSlug: string, episodeKey: string, extension: AudioFileExtension = 'mp3') {
+	return join(podcastDirectory(podcastSlug), `${episodeKey}.${extension}`)
 }
 
 export function podcastDirectory(podcastSlug: string) {

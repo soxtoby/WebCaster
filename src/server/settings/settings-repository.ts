@@ -5,6 +5,7 @@ import { elevenLabsDefaults } from "../tts/elevenlabs"
 import { inworldDefaults } from "../tts/inworld"
 import { lemonFoxDefaults } from "../tts/lemonfox"
 import { openAiDefaults } from "../tts/openai"
+import { voiceboxDefaults } from "../tts/voicebox"
 import { defaultEpisodeGenerationSettings, defaultImageDescriptionProviderSettings, defaultImageDescriptionSettings, defaultServerSettings, imageDescriptionProviders, ttsProviders, type EpisodeGenerationSettings, type ImageDescriptionProvider, type ImageDescriptionProviderState, type ImageDescriptionSettings, type ServerSettings, type SettingsState, type TtsProvider, type VoiceRecord } from "./settings-types"
 
 export function listProviderSettings(): SettingsState {
@@ -207,7 +208,8 @@ function createDefaultSettings(): SettingsState {
         inworld: { ...inworldDefaults },
         openai: { ...openAiDefaults },
         elevenlabs: { ...elevenLabsDefaults },
-        lemonfox: { ...lemonFoxDefaults }
+        lemonfox: { ...lemonFoxDefaults },
+        voicebox: { ...voiceboxDefaults }
     }
 }
 
