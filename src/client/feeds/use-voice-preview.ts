@@ -5,6 +5,8 @@ export function useVoicePreview() {
     let [playingVoiceId, setPlayingVoiceId] = useState('')
     let [previewError, setPreviewError] = useState('')
     let previewAudioRef = useRef<HTMLAudioElement | null>(null)
+    let previewAbortRef = useRef<AbortController | null>(null)
+    let previewObjectUrlRef = useRef('')
     let previewRequestRef = useRef(0)
     let loadingTimerRef = useRef<number | null>(null)
 
@@ -27,29 +29,46 @@ export function useVoicePreview() {
             setPreviewingVoiceId(resolvedVoiceId)
         }, 100)
 
-        let audio = new Audio(buildVoicePreviewUrl(resolvedVoiceId))
-        previewAudioRef.current = audio
-        audio.onended = () => {
-            if (previewRequestRef.current != requestId)
-                return
-
-            setPlayingVoiceId('')
-            setPreviewingVoiceId('')
-        }
-
-        audio.onerror = () => {
-            if (previewRequestRef.current != requestId)
-                return
-
-            setPreviewError('Could not play voice preview')
-            setPlayingVoiceId('')
-            setPreviewingVoiceId('')
-        }
-
         try {
+            let controller = new AbortController()
+            previewAbortRef.current = controller
+
+            let response = await fetchPreviewAudio(buildVoicePreviewUrl(resolvedVoiceId), controller)
+            if (!response.ok)
+                throw new Error('Could not fetch voice preview')
+
+            let previewBlob = await response.blob()
+            if (previewRequestRef.current != requestId)
+                return
+
+            let objectUrl = URL.createObjectURL(previewBlob)
+            previewObjectUrlRef.current = objectUrl
+
+            let audio = new Audio(objectUrl)
+            previewAudioRef.current = audio
+            audio.onended = () => {
+                if (previewRequestRef.current != requestId)
+                    return
+
+                releasePreviewObjectUrl()
+                setPlayingVoiceId('')
+                setPreviewingVoiceId('')
+            }
+
+            audio.onerror = () => {
+                if (previewRequestRef.current != requestId)
+                    return
+
+                releasePreviewObjectUrl()
+                setPreviewError('Could not play voice preview')
+                setPlayingVoiceId('')
+                setPreviewingVoiceId('')
+            }
+
             await audio.play()
             if (previewRequestRef.current != requestId) {
                 audio.pause()
+                releasePreviewObjectUrl()
                 return
             }
 
@@ -71,6 +90,8 @@ export function useVoicePreview() {
     function stopVoicePreview(clearError = true) {
         previewRequestRef.current += 1
         clearLoadingTimer()
+        previewAbortRef.current?.abort()
+        previewAbortRef.current = null
 
         let currentAudio = previewAudioRef.current
         if (currentAudio) {
@@ -79,6 +100,8 @@ export function useVoicePreview() {
             currentAudio.src = ''
             previewAudioRef.current = null
         }
+
+        releasePreviewObjectUrl()
 
         if (clearError)
             setPreviewError('')
@@ -94,6 +117,15 @@ export function useVoicePreview() {
         }
     }
 
+    function releasePreviewObjectUrl() {
+        let objectUrl = previewObjectUrlRef.current
+        if (!objectUrl)
+            return
+
+        URL.revokeObjectURL(objectUrl)
+        previewObjectUrlRef.current = ''
+    }
+
     return {
         previewingVoiceId,
         playingVoiceId,
@@ -105,4 +137,11 @@ export function useVoicePreview() {
 
 function buildVoicePreviewUrl(voiceId: string) {
     return `/preview/${encodeURIComponent(voiceId)}`
+}
+
+function fetchPreviewAudio(url: string, controller: AbortController) {
+    return fetch(url, {
+        cache: 'no-store',
+        signal: controller.signal
+    })
 }

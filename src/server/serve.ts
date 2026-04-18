@@ -8,6 +8,7 @@ import { buildTrpcContext } from "./trpc/trpc"
 import { streamVoicePreviewAudio } from "./tts/voice-preview"
 
 let server: Server<undefined> | null = null
+let serverIdleTimeoutSeconds = 0
 
 export function restartServer(hostname: string, port: number) {
     server?.stop()
@@ -19,6 +20,7 @@ export function restartServer(hostname: string, port: number) {
 export function startServer(hostname: string, port: number) {
     server ??= serve({
         development: process.env.NODE_ENV !== 'production',
+        idleTimeout: serverIdleTimeoutSeconds,
         hostname,
         port,
         fetch(request) {
@@ -43,7 +45,7 @@ export function startServer(hostname: string, port: number) {
             }),
             '/feed/:slug/:episodeKey': withRequestLogging(async (request) => {
                 let slug = request.params.slug
-                let episodeKey = request.params.episodeKey.trim().replace(/\.(mp3|wav)$/i, '')
+                let episodeKey = request.params.episodeKey.trim().replace(/\.mp3$/i, '')
                 if (!episodeKey)
                     return new Response('Episode not found', { status: 404 })
 
