@@ -5,6 +5,7 @@
 ### Added
 - Improved article content extraction.
 - Voicebox TTS support.
+- Feed items with existing enclosures are archived by default.
 
 ## V1.0.9
 

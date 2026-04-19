@@ -15,6 +15,7 @@ export type ParsedFeedArticle = {
     content: string | null
     guid: string | null
     publishedAt: string | null
+    hasExistingEnclosure: boolean
 }
 
 let parser = new XMLParser({
@@ -62,7 +63,14 @@ export async function fetchFeed(rssUrl: string): Promise<ParsedFeed | null> {
 }
 
 export async function fetchArticlePage(sourceUrl: string): Promise<ParsedFeedArticle | null> {
-    return await fetchSourceArticleFeedInput(sourceUrl)
+    let article = await fetchSourceArticleFeedInput(sourceUrl)
+    if (!article)
+        return null
+
+    return {
+        ...article,
+        hasExistingEnclosure: false
+    }
 }
 
 function parseRssChannel(channel: any): ParsedFeed {
@@ -111,6 +119,7 @@ function parseRssItem(item: any): ParsedFeedArticle | null {
         content: textOf(item['content:encoded']) || textOf(item.content) || null,
         guid: textOf(item.guid) || null,
         publishedAt: normalizeDate(textOf(item.pubDate) || textOf(item.published) || textOf(item.updated)),
+        hasExistingEnclosure: hasRssEnclosure(item)
     }
 }
 
@@ -126,6 +135,7 @@ function parseAtomEntry(entry: any): ParsedFeedArticle | null {
         content: textOf(entry.content) || null,
         guid: textOf(entry.id) || sourceUrl,
         publishedAt: normalizeDate(textOf(entry.published) || textOf(entry.updated)),
+        hasExistingEnclosure: hasAtomEnclosure(entry)
     }
 }
 
@@ -139,6 +149,19 @@ function extractAtomLink(entry: any): string {
         return links[0]['@_href']
 
     return ''
+}
+
+function hasRssEnclosure(item: any): boolean {
+    return toArray(item.enclosure).some(enclosure => {
+        if (typeof enclosure == 'string')
+            return enclosure.trim().length > 0
+
+        return Boolean(enclosure?.['@_url'] || enclosure?.url || textOf(enclosure))
+    })
+}
+
+function hasAtomEnclosure(entry: any): boolean {
+    return toArray(entry.link).some(link => link?.['@_rel'] == 'enclosure' && Boolean(link?.['@_href']))
 }
 
 function textOf(node: any): string {
