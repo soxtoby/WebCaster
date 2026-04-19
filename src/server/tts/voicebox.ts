@@ -14,9 +14,15 @@ let VoiceboxProfileSchema = object({
     id: string(),
     name: string(),
     description: optional(nullable(string())),
-    language: string()
+    language: string(),
+    default_engine: optional(nullable(string()))
 })
 type VoiceboxProfile = InferOutput<typeof VoiceboxProfileSchema>
+
+type ResolvedVoiceboxVoice = {
+    profileId: string
+    engine: string | null
+}
 
 let VoiceboxGenerationResponseSchema = object({
     id: string(),
@@ -31,26 +37,16 @@ export let voiceboxDefaults: TtsProviderSettings = {
 }
 
 export async function listVoiceboxVoices(settings: TtsProviderSettings): Promise<VoiceRecord[]> {
-    let response = await fetchJson(
-        'Voicebox profiles',
-        array(VoiceboxProfileSchema),
-        settings.baseUrl,
-        '/profiles',
-        {
-            headers: {
-                Accept: 'application/json'
-            }
-        }
-    )
-
+    let response = await listVoiceboxProfiles(settings)
     return response.map(profile => mapVoiceboxProfile(profile))
 }
 
 export async function streamVoiceboxSpeech(providerVoiceId: string, text: string, settings: TtsProviderSettings, options?: StreamSpeechOptions): Promise<{ stream: ReadableStream<Uint8Array>; mimeType: string }> {
+    let voice = await resolveVoiceboxVoice(providerVoiceId, settings)
     let stream = createChunkedSpeechStream(
         text,
         voiceboxMaxChunkChars,
-        async chunk => await fetchVoiceboxChunkStream(providerVoiceId, chunk, settings),
+        async chunk => await fetchVoiceboxChunkStream(voice, chunk, settings),
         options
     )
 
@@ -60,24 +56,21 @@ export async function streamVoiceboxSpeech(providerVoiceId: string, text: string
     }
 }
 
-async function fetchVoiceboxChunkStream(providerVoiceId: string, text: string, settings: TtsProviderSettings) {
-    let response = await fetchVoiceboxStreamResponse(providerVoiceId, text, settings)
+async function fetchVoiceboxChunkStream(voice: ResolvedVoiceboxVoice, text: string, settings: TtsProviderSettings) {
+    let response = await fetchVoiceboxStreamResponse(voice, text, settings)
     let converted = await convertVoiceboxWavResponseToMp3(response)
     return converted.stream
 }
 
-async function fetchVoiceboxStreamResponse(providerVoiceId: string, text: string, settings: TtsProviderSettings) {
+async function fetchVoiceboxStreamResponse(voice: ResolvedVoiceboxVoice, text: string, settings: TtsProviderSettings) {
+    let requestBody = JSON.stringify(buildVoiceboxGenerationRequest(voice, text))
     let streamResponse = await fetch(buildVoiceboxRequestUrl(settings.baseUrl, '/generate/stream'), {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             Accept: 'audio/wav'
         },
-        body: JSON.stringify({
-            profile_id: providerVoiceId,
-            text,
-            max_chunk_chars: voiceboxMaxChunkChars
-        })
+        body: requestBody
     })
 
     if (streamResponse.ok)
@@ -97,11 +90,7 @@ async function fetchVoiceboxStreamResponse(providerVoiceId: string, text: string
                 'Content-Type': 'application/json',
                 Accept: 'application/json'
             },
-            body: JSON.stringify({
-                profile_id: providerVoiceId,
-                text,
-                max_chunk_chars: voiceboxMaxChunkChars
-            })
+            body: requestBody
         }
     )
 
@@ -164,6 +153,74 @@ function mapVoiceboxProfile(profile: VoiceboxProfile): VoiceRecord {
         description,
         gender
     }
+}
+
+async function listVoiceboxProfiles(settings: TtsProviderSettings) {
+    return await fetchJson(
+        'Voicebox profiles',
+        array(VoiceboxProfileSchema),
+        settings.baseUrl,
+        '/profiles',
+        {
+            headers: {
+                Accept: 'application/json'
+            }
+        }
+    )
+}
+
+async function resolveVoiceboxVoice(providerVoiceId: string, settings: TtsProviderSettings): Promise<ResolvedVoiceboxVoice> {
+    let parsed = parseVoiceboxProviderVoiceId(providerVoiceId)
+    if (parsed.engine)
+        return parsed
+
+    return {
+        profileId: parsed.profileId,
+        engine: normalizeVoiceboxEngine((await getVoiceboxProfile(parsed.profileId, settings)).default_engine)
+    }
+}
+
+async function getVoiceboxProfile(profileId: string, settings: TtsProviderSettings) {
+    return await fetchJson(
+        'Voicebox profile',
+        VoiceboxProfileSchema,
+        settings.baseUrl,
+        `/profiles/${encodeURIComponent(profileId)}`,
+        {
+            headers: {
+                Accept: 'application/json'
+            }
+        }
+    )
+}
+
+function buildVoiceboxGenerationRequest(voice: ResolvedVoiceboxVoice, text: string) {
+    return {
+        profile_id: voice.profileId,
+        text,
+        max_chunk_chars: voiceboxMaxChunkChars,
+        ...(voice.engine ? { engine: voice.engine } : {})
+    }
+}
+
+function parseVoiceboxProviderVoiceId(providerVoiceId: string): ResolvedVoiceboxVoice {
+    let separatorIndex = providerVoiceId.indexOf('::')
+    if (separatorIndex == -1) {
+        return {
+            profileId: providerVoiceId,
+            engine: null
+        }
+    }
+
+    return {
+        profileId: providerVoiceId.slice(0, separatorIndex),
+        engine: normalizeVoiceboxEngine(providerVoiceId.slice(separatorIndex + 2))
+    }
+}
+
+function normalizeVoiceboxEngine(engine: string | null | undefined) {
+    let normalized = engine?.trim() || ''
+    return normalized || null
 }
 
 function isRetryableVoiceboxAudioStatus(status: number) {

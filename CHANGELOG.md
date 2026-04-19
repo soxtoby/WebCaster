@@ -1,5 +1,10 @@
 # Changelog
 
+## V1.0.11
+
+### Fixes
+- Using Voicebox profile's default engine for TTS, to fix Kokoro presets.
+
 ## V1.0.10
 
 ### Added
