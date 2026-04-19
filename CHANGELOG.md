@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## V1.0.10
 
 ### Added
 - Improved article content extraction.
