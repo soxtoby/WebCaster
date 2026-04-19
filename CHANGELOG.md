@@ -4,6 +4,7 @@
 
 ### Added
 - Improved article content extraction.
+- Voicebox TTS support.
 
 ## V1.0.9
 
