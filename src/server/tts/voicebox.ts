@@ -1,11 +1,14 @@
 import { array, nullable, object, optional, string, type InferOutput } from "valibot"
-import { fetchJson, fetchResponse } from "../http/request"
+import { fetchJson } from "../http/request"
 import { type TtsProviderSettings, type VoiceRecord } from "../settings/settings-types"
+import { createChunkedSpeechStream } from "./chunked-speech"
+import { type StreamSpeechOptions } from "./tts"
 import { detectGenderFromName } from "./tts-utils"
 import { convertWavToMp3Bytes } from "./wav-to-mp3"
 
 let voiceboxAudioRetryDelayMs = 500
 let voiceboxAudioRetryWindowMs = 30000
+let voiceboxMaxChunkChars = 2000
 
 let VoiceboxProfileSchema = object({
     id: string(),
@@ -43,9 +46,24 @@ export async function listVoiceboxVoices(settings: TtsProviderSettings): Promise
     return response.map(profile => mapVoiceboxProfile(profile))
 }
 
-export async function streamVoiceboxSpeech(providerVoiceId: string, text: string, settings: TtsProviderSettings): Promise<{ stream: ReadableStream<Uint8Array>; mimeType: string }> {
+export async function streamVoiceboxSpeech(providerVoiceId: string, text: string, settings: TtsProviderSettings, options?: StreamSpeechOptions): Promise<{ stream: ReadableStream<Uint8Array>; mimeType: string }> {
+    let stream = createChunkedSpeechStream(
+        text,
+        voiceboxMaxChunkChars,
+        async chunk => await fetchVoiceboxChunkStream(providerVoiceId, chunk, settings),
+        options
+    )
+
+    return {
+        stream,
+        mimeType: 'audio/mpeg'
+    }
+}
+
+async function fetchVoiceboxChunkStream(providerVoiceId: string, text: string, settings: TtsProviderSettings) {
     let response = await fetchVoiceboxStreamResponse(providerVoiceId, text, settings)
-    return await convertVoiceboxWavResponseToMp3(response)
+    let converted = await convertVoiceboxWavResponseToMp3(response)
+    return converted.stream
 }
 
 async function fetchVoiceboxStreamResponse(providerVoiceId: string, text: string, settings: TtsProviderSettings) {
@@ -57,7 +75,8 @@ async function fetchVoiceboxStreamResponse(providerVoiceId: string, text: string
         },
         body: JSON.stringify({
             profile_id: providerVoiceId,
-            text
+            text,
+            max_chunk_chars: voiceboxMaxChunkChars
         })
     })
 
@@ -80,7 +99,8 @@ async function fetchVoiceboxStreamResponse(providerVoiceId: string, text: string
             },
             body: JSON.stringify({
                 profile_id: providerVoiceId,
-                text
+                text,
+                max_chunk_chars: voiceboxMaxChunkChars
             })
         }
     )

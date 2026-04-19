@@ -48,7 +48,7 @@ export async function streamSpeech(provider: TtsProvider, providerVoiceId: strin
         return await streamElevenLabsSpeech(providerVoiceId, text, settings)
 
     if (provider == 'voicebox')
-        return await streamVoiceboxSpeech(providerVoiceId, text, settings)
+        return await streamVoiceboxSpeech(providerVoiceId, text, settings, options)
 
     return await streamInworldSpeech(providerVoiceId, text, settings, options)
 }
