@@ -152,16 +152,90 @@ function extractAtomLink(entry: any): string {
 }
 
 function hasRssEnclosure(item: any): boolean {
-    return toArray(item.enclosure).some(enclosure => {
-        if (typeof enclosure == 'string')
-            return enclosure.trim().length > 0
+    if (toArray(item.enclosure).some(isAudioOrVideoEnclosure))
+        return true
 
-        return Boolean(enclosure?.['@_url'] || enclosure?.url || textOf(enclosure))
-    })
+    return toArray(item['media:content']).some(isAudioOrVideoEnclosure)
 }
 
 function hasAtomEnclosure(entry: any): boolean {
-    return toArray(entry.link).some(link => link?.['@_rel'] == 'enclosure' && Boolean(link?.['@_href']))
+    return toArray(entry.link).some(link => link?.['@_rel'] == 'enclosure' && isAudioOrVideoEnclosure(link))
+}
+
+function isAudioOrVideoEnclosure(enclosure: any): boolean {
+    let url = enclosureUrl(enclosure)
+    if (!url)
+        return false
+
+    let type = enclosureType(enclosure)
+    if (type && isAudioOrVideoMimeType(type))
+        return true
+
+    let medium = enclosureMedium(enclosure)
+    if (medium && isAudioOrVideoMedium(medium))
+        return true
+
+    return hasAudioOrVideoExtension(url)
+}
+
+function enclosureUrl(enclosure: any): string {
+    if (typeof enclosure == 'string')
+        return enclosure.trim()
+
+    if (typeof enclosure == 'object' && enclosure) {
+        let url = enclosure['@_url'] || enclosure.url || enclosure['@_href'] || enclosure.href || textOf(enclosure)
+        if (typeof url == 'string')
+            return url.trim()
+    }
+
+    return ''
+}
+
+function enclosureType(enclosure: any): string {
+    if (typeof enclosure == 'object' && enclosure) {
+        let type = enclosure['@_type'] || enclosure.type
+        if (typeof type == 'string')
+            return type
+    }
+
+    return ''
+}
+
+function enclosureMedium(enclosure: any): string {
+    if (typeof enclosure == 'object' && enclosure) {
+        let medium = enclosure['@_medium'] || enclosure.medium
+        if (typeof medium == 'string')
+            return medium
+    }
+
+    return ''
+}
+
+function isAudioOrVideoMimeType(type: string): boolean {
+    let lower = type.toLowerCase()
+    if (lower.startsWith('audio/'))
+        return true
+
+    if (lower.startsWith('video/'))
+        return true
+
+    return false
+}
+
+function isAudioOrVideoMedium(medium: string): boolean {
+    let lower = medium.toLowerCase()
+    if (lower == 'audio')
+        return true
+
+    if (lower == 'video')
+        return true
+
+    return false
+}
+
+function hasAudioOrVideoExtension(url: string): boolean {
+    let lower = url.toLowerCase()
+    return /\.(mp3|m4a|aac|wav|flac|ogg|oga|opus|weba|webm|m4b|mp4|m4v|mov|avi|wmv|flv|mkv|m3u8)(\?|#|$)/.test(lower)
 }
 
 function textOf(node: any): string {
