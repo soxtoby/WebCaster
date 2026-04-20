@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Feed items are only auto-archived when their enclosures are audio or video files.
+
 ## V1.0.11
 
 ### Fixes
