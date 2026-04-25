@@ -729,7 +729,7 @@ async function runEpisodeGenerationJob(job: EpisodeGenerationJob) {
 
         throwIfEpisodeGenerationCancelled(job)
 
-        if (generated.provider == 'inworld')
+        if (generated.provider == 'inworld' || generated.provider == 'voicebox')
             updateArticleChunkProgress(feed.id, article.episodeKey, 0, estimateChunkCount(generated.textLength))
 
         let stopEstimatedProgress = startEstimatedProgressUpdates(
@@ -1051,7 +1051,7 @@ function updateArticleChunkProgress(feedId: number, episodeKey: string, chunksPr
 }
 
 function startEstimatedProgressUpdates(feedId: number, episodeKey: string, provider: TtsProvider, textLength: number) {
-    if (provider == 'inworld')
+    if (provider == 'inworld' || provider == 'voicebox')
         return () => { }
 
     let estimatedDurationSeconds = estimateProviderDurationSeconds(provider, textLength)

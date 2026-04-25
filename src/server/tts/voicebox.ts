@@ -6,9 +6,7 @@ import { type StreamSpeechOptions } from "./tts"
 import { detectGenderFromName } from "./tts-utils"
 import { convertWavToMp3Bytes } from "./wav-to-mp3"
 
-let voiceboxAudioRetryDelayMs = 500
-let voiceboxAudioRetryWindowMs = 30000
-let voiceboxMaxChunkChars = 2000
+let voiceboxMaxChunkChars = 500
 
 let VoiceboxProfileSchema = object({
     id: string(),
@@ -22,13 +20,8 @@ type VoiceboxProfile = InferOutput<typeof VoiceboxProfileSchema>
 type ResolvedVoiceboxVoice = {
     profileId: string
     engine: string | null
+    language: string
 }
-
-let VoiceboxGenerationResponseSchema = object({
-    id: string(),
-    audio_path: string()
-})
-type VoiceboxGenerationResponse = InferOutput<typeof VoiceboxGenerationResponseSchema>
 
 export let voiceboxDefaults: TtsProviderSettings = {
     enabled: false,
@@ -57,88 +50,82 @@ export async function streamVoiceboxSpeech(providerVoiceId: string, text: string
 }
 
 async function fetchVoiceboxChunkStream(voice: ResolvedVoiceboxVoice, text: string, settings: TtsProviderSettings) {
-    let response = await fetchVoiceboxStreamResponse(voice, text, settings)
-    let converted = await convertVoiceboxWavResponseToMp3(response)
-    return converted.stream
-}
+    let wavBytes = await fetchVoiceboxChunkBytes(voice, text, settings)
+    let mp3Bytes: Uint8Array
+    try {
+        mp3Bytes = convertWavToMp3Bytes(wavBytes)
+    } catch (error) {
+        let message = error instanceof Error ? error.message : 'Voicebox stream returned invalid audio'
+        throw new Error(`Voicebox streaming response failed: ${message}`)
+    }
 
-async function fetchVoiceboxStreamResponse(voice: ResolvedVoiceboxVoice, text: string, settings: TtsProviderSettings) {
-    let requestBody = JSON.stringify(buildVoiceboxGenerationRequest(voice, text))
-    let streamResponse = await fetch(buildVoiceboxRequestUrl(settings.baseUrl, '/generate/stream'), {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            Accept: 'audio/wav'
-        },
-        body: requestBody
-    })
-
-    if (streamResponse.ok)
-        return streamResponse
-
-    if (streamResponse.status != 404 && streamResponse.status != 405)
-        throw new Error(`Voicebox speech generation request failed: ${streamResponse.status} ${streamResponse.statusText}`)
-
-    let generation: VoiceboxGenerationResponse = await fetchJson(
-        'Voicebox speech generation',
-        VoiceboxGenerationResponseSchema,
-        settings.baseUrl,
-        '/generate',
-        {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Accept: 'application/json'
-            },
-            body: requestBody
-        }
-    )
-
-    return await waitForVoiceboxGeneratedAudio(generation.id, settings)
-}
-
-async function convertVoiceboxWavResponseToMp3(response: Response) {
-    let wavBytes = new Uint8Array(await response.arrayBuffer())
-    if (wavBytes.byteLength == 0)
-        throw new Error('Voicebox generated audio was empty')
-
-    let mp3Bytes = convertWavToMp3Bytes(wavBytes)
-    let stream = new ReadableStream<Uint8Array>({
+    return new ReadableStream<Uint8Array>({
         start(controller) {
             controller.enqueue(mp3Bytes)
             controller.close()
         }
     })
+}
 
-    return {
-        stream,
-        mimeType: 'audio/mpeg'
+async function fetchVoiceboxChunkBytes(voice: ResolvedVoiceboxVoice, text: string, settings: TtsProviderSettings) {
+    try {
+        let streamResponse = await fetch(buildVoiceboxRequestUrl(settings.baseUrl, '/generate/stream'), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'audio/wav'
+            },
+            body: JSON.stringify(buildVoiceboxGenerationRequest(voice, text)),
+            ...{ timeout: false }
+        })
+
+        if (!streamResponse.ok)
+            await handleStreamError(streamResponse)
+
+        let wavBytes: Uint8Array
+        try {
+            wavBytes = new Uint8Array(await streamResponse.arrayBuffer())
+        } catch (error) {
+            let message = error instanceof Error ? error.message : 'stream read failed'
+            throw new Error(`Voicebox streaming response failed while reading audio: ${message}`)
+        }
+
+        if (wavBytes.byteLength == 0)
+            throw new Error('Voicebox generated audio was empty')
+
+        return wavBytes
+    } catch (error) {
+        if (error instanceof Error)
+            throw error
+
+        throw new Error('Voicebox streaming response failed')
     }
 }
 
-async function waitForVoiceboxGeneratedAudio(generationId: string, settings: TtsProviderSettings) {
-    let startedAt = Date.now()
-    let lastRetryableStatus = 0
-
-    while (true) {
-        let response = await fetch(buildVoiceboxRequestUrl(settings.baseUrl, `/audio/${generationId}`), {
-            headers: {
-                Accept: 'audio/wav'
+async function handleStreamError(streamResponse: Response) {
+    let details = ''
+    try {
+        let body = await streamResponse.text()
+        let trimmed = body.trim()
+        if (trimmed) {
+            try {
+                let parsed = JSON.parse(trimmed) as { detail?: unknown; error?: unknown; message?: unknown }
+                let candidates = [parsed.detail, parsed.error, parsed.message]
+                let detail = candidates.find(value => typeof value == 'string' && value.trim())
+                details = typeof detail == 'string' ? detail.trim() : trimmed
+            } catch {
+                details = trimmed
             }
-        })
-
-        if (response.ok)
-            return response
-
-        if (!isRetryableVoiceboxAudioStatus(response.status))
-            throw new Error(`Voicebox generated audio request failed: ${response.status} ${response.statusText}`)
-
-        lastRetryableStatus = response.status
-        if ((Date.now() - startedAt) >= voiceboxAudioRetryWindowMs)
-            throw new Error(`Voicebox generated audio was not ready in time: ${lastRetryableStatus}`)
-
-        await Bun.sleep(voiceboxAudioRetryDelayMs)
+        }
+    } catch {
     }
+
+    if (streamResponse.status == 404 || streamResponse.status == 405)
+        throw new Error('Voicebox streaming endpoint is not available for this engine')
+
+    throw new Error(details
+        ? `Voicebox speech generation request failed: ${streamResponse.status} ${streamResponse.statusText} - ${details}`
+        : `Voicebox speech generation request failed: ${streamResponse.status} ${streamResponse.statusText}`)
 }
 
 function mapVoiceboxProfile(profile: VoiceboxProfile): VoiceRecord {
@@ -171,12 +158,12 @@ async function listVoiceboxProfiles(settings: TtsProviderSettings) {
 
 async function resolveVoiceboxVoice(providerVoiceId: string, settings: TtsProviderSettings): Promise<ResolvedVoiceboxVoice> {
     let parsed = parseVoiceboxProviderVoiceId(providerVoiceId)
-    if (parsed.engine)
-        return parsed
+    let profile = await getVoiceboxProfile(parsed.profileId, settings)
 
     return {
         profileId: parsed.profileId,
-        engine: normalizeVoiceboxEngine((await getVoiceboxProfile(parsed.profileId, settings)).default_engine)
+        engine: parsed.engine || normalizeVoiceboxEngine(profile.default_engine),
+        language: normalizeVoiceboxLanguage(profile.language)
     }
 }
 
@@ -198,6 +185,7 @@ function buildVoiceboxGenerationRequest(voice: ResolvedVoiceboxVoice, text: stri
     return {
         profile_id: voice.profileId,
         text,
+        language: voice.language,
         max_chunk_chars: voiceboxMaxChunkChars,
         ...(voice.engine ? { engine: voice.engine } : {})
     }
@@ -208,13 +196,15 @@ function parseVoiceboxProviderVoiceId(providerVoiceId: string): ResolvedVoicebox
     if (separatorIndex == -1) {
         return {
             profileId: providerVoiceId,
-            engine: null
+            engine: null,
+            language: 'en'
         }
     }
 
     return {
         profileId: providerVoiceId.slice(0, separatorIndex),
-        engine: normalizeVoiceboxEngine(providerVoiceId.slice(separatorIndex + 2))
+        engine: normalizeVoiceboxEngine(providerVoiceId.slice(separatorIndex + 2)),
+        language: 'en'
     }
 }
 
@@ -223,8 +213,9 @@ function normalizeVoiceboxEngine(engine: string | null | undefined) {
     return normalized || null
 }
 
-function isRetryableVoiceboxAudioStatus(status: number) {
-    return status == 400 || status == 404 || status == 409 || status == 425
+function normalizeVoiceboxLanguage(language: string | null | undefined) {
+    let normalized = language?.trim()
+    return normalized || 'en'
 }
 
 function buildVoiceboxRequestUrl(baseUrl: string, endpoint: string) {

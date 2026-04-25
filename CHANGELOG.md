@@ -4,6 +4,7 @@
 
 ### Fixed
 - Feed items are only auto-archived when their enclosures are audio or video files.
+- Fixed timeout when generating audio with Voicebox.
 
 ## V1.0.11
 
