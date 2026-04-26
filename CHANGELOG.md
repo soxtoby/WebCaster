@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Manual generation mode episodes no longer appear in the podcast feed while audio is still being generated.
+
 ## V1.0.12
 
 ### Fixed
