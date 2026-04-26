@@ -48,40 +48,53 @@ export function createChunkedSpeechStream(text: string, maxLength: number, loadC
 }
 
 export function splitTextIntoChunks(text: string, maxLength: number = 2000): string[] {
-    if (text.length <= maxLength)
-        return [text]
-
     let chunks: string[] = []
-    let remaining = text
+    let remaining = text.trimStart()
 
-    while (remaining.length > maxLength) {
-        let window = remaining.slice(0, maxLength)
-        let splitAt: number
+    while (remaining.length > 0) {
+        let splitAt: number | null = null
 
-        let paraIdx = window.lastIndexOf('\n\n')
-        if (paraIdx > 0) {
-            splitAt = paraIdx + 2
-        } else {
-            let newlineIdx = window.lastIndexOf('\n')
-            if (newlineIdx > 0) {
-                splitAt = newlineIdx + 1
+        if (remaining.length > maxLength) {
+            let window = remaining.slice(0, maxLength)
+
+            let paraIdx = window.lastIndexOf('\n\n')
+            if (paraIdx > 0) {
+                splitAt = paraIdx + 2
             } else {
-                let lastSentenceBreak = Array.from(window.matchAll(/[.!?]\s+/g)).at(-1)
-                if (lastSentenceBreak) {
-                    splitAt = lastSentenceBreak.index + lastSentenceBreak[0].length
+                let newlineIdx = window.lastIndexOf('\n')
+                if (newlineIdx > 0) {
+                    splitAt = newlineIdx + 1
                 } else {
-                    let wordIdx = window.lastIndexOf(' ')
-                    splitAt = wordIdx > 0 ? wordIdx + 1 : maxLength
+                    let lastSentenceBreak = Array.from(window.matchAll(/[.!?]\s+/g)).at(-1)
+                    if (lastSentenceBreak) {
+                        splitAt = lastSentenceBreak.index + lastSentenceBreak[0].length
+                    } else {
+                        let wordIdx = window.lastIndexOf(' ')
+                        splitAt = wordIdx > 0 ? wordIdx + 1 : maxLength
+                    }
                 }
+            }
+        } else {
+            let searchFrom = 0
+            let paraIdx: number
+            while ((paraIdx = remaining.indexOf('\n\n', searchFrom)) !== -1) {
+                if (paraIdx >= 50) {
+                    splitAt = paraIdx + 2
+                    break
+                }
+                searchFrom = paraIdx + 2
             }
         }
 
-        chunks.push(remaining.slice(0, splitAt).trim())
-        remaining = remaining.slice(splitAt).trimStart()
+        if (splitAt != null) {
+            chunks.push(remaining.slice(0, splitAt).trim())
+            remaining = remaining.slice(splitAt).trimStart()
+        } else {
+            if (remaining.trim())
+                chunks.push(remaining.trim())
+            break
+        }
     }
-
-    if (remaining.trim())
-        chunks.push(remaining.trim())
 
     return chunks
 }
