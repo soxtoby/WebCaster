@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## V1.0.13
 
 ### Added
 - Smaller chunk sizes for better voice quality from Voicebox and Inworld TTS.
