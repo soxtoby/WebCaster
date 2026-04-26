@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Collapsing a playing episode now stops audio and won't auto-play when re-expanded.
+
 ## V1.0.13
 
 ### Added
