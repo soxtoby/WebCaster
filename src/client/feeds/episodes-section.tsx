@@ -210,7 +210,14 @@ export function EpisodesSection({
                                 feedId={feedId}
                                 feedTitle={feedTitle}
                                 voiceOptions={voiceOptions}
-                                onToggleSelected={() => setSelectedEpisodeKey(current => current == episode.episodeKey ? null : episode.episodeKey)}
+                                onToggleSelected={() => {
+                                    let isCollapsing = selectedEpisodeKey == episode.episodeKey
+                                    setSelectedEpisodeKey(isCollapsing ? null : episode.episodeKey)
+                                    if (isCollapsing && activeEpisodeKey == episode.episodeKey) {
+                                        setActiveEpisodeKey(null)
+                                        setActiveEpisodeAudioUrl('')
+                                    }
+                                }}
                                 onRemoveArticle={removeArticleFromFeed}
                                 onUpdateVoice={updateEpisodeVoice}
                                 onUpdateArchived={updateEpisodeArchived}
