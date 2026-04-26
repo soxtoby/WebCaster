@@ -197,12 +197,7 @@ export async function buildPodcastFeedXml(feed: Feed) {
         .where(and(eq(articlesTable.feedId, feed.id), eq(articlesTable.archived, false)))
         .orderBy(desc(articlesTable.publishedAt), desc(articlesTable.createdAt))
         .all()
-    let episodes = (await Promise.all(storedEpisodes.map(async episode => {
-        if (await isEpisodePublishedInPodcastFeed(feed, episode))
-            return episode
-
-        return null
-    }))).filter((episode): episode is Article => episode != null)
+    let episodes = storedEpisodes.filter(episode => isEpisodePublishedInPodcastFeed(episode))
 
     let safeTitle = escapeXml(feed.name)
     let safeDescription = escapeXml(feed.description || '')
@@ -1537,11 +1532,11 @@ async function buildRssItem(feed: Feed, article: Article) {
     return `<item><title>${title}</title><guid isPermaLink="false">${escapeXml(guid)}</guid><link>${escapeXml(article.sourceUrl)}</link><description>${description}</description><enclosure url="${escapeXml(enclosureUrl)}" length="${enclosureLength}" type="audio/mpeg"/>${durationTag}${published}</item>`
 }
 
-async function isEpisodePublishedInPodcastFeed(feed: Feed, article: Article) {
+function isEpisodePublishedInPodcastFeed(article: Article) {
     if (article.generationMode != 'manual')
         return true
 
-    return await Bun.file(episodePath(feed.podcastSlug, resolveEpisodeKey(article.episodeKey, article.title, article.sourceUrl))).exists()
+    return article.status == 'ready'
 }
 
 function formatPodcastDuration(value: number) {
