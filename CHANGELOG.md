@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- Smaller chunk sizes for better voice quality from Voicebox and Inworld TTS.
+
 ### Fixed
 - Manual generation mode episodes no longer appear in the podcast feed while audio is still being generated.
 

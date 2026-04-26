@@ -53,20 +53,21 @@ export function splitTextIntoChunks(text: string, maxLength: number = 2000): str
 
     let chunks: string[] = []
     let remaining = text
+    let minimumChunkLength = Math.min(50, maxLength)
 
     while (remaining.length > maxLength) {
         let window = remaining.slice(0, maxLength)
         let splitAt: number
 
-        let paraIdx = window.lastIndexOf('\n\n')
+        let paraIdx = findLastIndexAtOrAfter(window, '\n\n', minimumChunkLength)
         if (paraIdx > 0) {
             splitAt = paraIdx + 2
         } else {
-            let newlineIdx = window.lastIndexOf('\n')
+            let newlineIdx = findLastInlineNewline(window)
             if (newlineIdx > 0) {
                 splitAt = newlineIdx + 1
             } else {
-                let lastSentenceBreak = Array.from(window.matchAll(/[.!?]\s+/g)).at(-1)
+                let lastSentenceBreak = Array.from(window.matchAll(/[.!?](?:[ \t]+|\r?\n(?!\r?\n))+/g)).at(-1)
                 if (lastSentenceBreak) {
                     splitAt = lastSentenceBreak.index + lastSentenceBreak[0].length
                 } else {
@@ -84,4 +85,27 @@ export function splitTextIntoChunks(text: string, maxLength: number = 2000): str
         chunks.push(remaining.trim())
 
     return chunks
+}
+
+function findLastIndexAtOrAfter(value: string, search: string, minimumLength: number): number {
+    let index = value.lastIndexOf(search)
+
+    if (index >= 0 && index + search.length >= minimumLength)
+        return index
+
+    return -1
+}
+
+function findLastInlineNewline(value: string): number {
+    for (let index = value.length - 1; index >= 0; index -= 1) {
+        if (value[index] != '\n')
+            continue
+
+        if (value[index - 1] == '\n' || value[index + 1] == '\n')
+            continue
+
+        return index
+    }
+
+    return -1
 }
