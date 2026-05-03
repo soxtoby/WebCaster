@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## V1.0.14
+
 ### Fixed
 - Collapsing a playing episode now stops audio and won't auto-play when re-expanded.
 - Existing feed articles are no longer reprocessed for image descriptions during routine feed polling unless the article changed.
