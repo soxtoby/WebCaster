@@ -4,6 +4,9 @@ WebCaster is a locally hosted web app that lets you convert any RSS feed of text
 - Use `bun` as the runtime and package manager.
 - Use `bunx` to run npm scripts.
 
+# Workflow
+- Update `CHANGELOG.md` when implementing a feature or fixing a bug.
+
 # Code style
 - Rely on JavaScript's auto semicolon insertion; avoid semicolons.
 - Use single quotes for data values.
@@ -16,4 +19,4 @@ WebCaster is a locally hosted web app that lets you convert any RSS feed of text
 - Use 4 spaces for indentation. 
 - Put single line if statement on the next line with no braces.
 - Organize files by feature, not by type.
-- ALWAYS define functions below where they are used if possible, relying on hoisting.
+- Organize code inside files according to the stepdown rule.
