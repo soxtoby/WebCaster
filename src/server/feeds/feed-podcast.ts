@@ -476,60 +476,75 @@ export async function insertFeedArticles(feedId: number, generationMode: string,
     let storedArticles: Article[] = []
 
     for (let item of items) {
-        let prepared = await prepareParsedFeedArticleForStorage(item, {
-            forceRegenerateImageDescriptions: false
-        })
-        let existing = findArticleBySourceUrl(feedId, prepared.sourceUrl)
-        let episodeKey = buildEpisodeRouteKey(prepared.title, prepared.sourceUrl)
-        let durationSeconds = estimateStoredEpisodeDurationSeconds({
-            title: prepared.title,
-            summary: prepared.summary,
-            content: prepared.content,
-            transcript: null
-        })
+        let existing = findArticleBySourceUrl(feedId, item.sourceUrl)
 
-        database
-            .insert(articlesTable)
-            .values({
-                feedId,
-                episodeKey,
-                articleSource,
-                guid: prepared.guid,
-                sourceUrl: prepared.sourceUrl,
-                title: prepared.title,
-                summary: prepared.summary,
-                content: prepared.content,
-                durationSeconds,
-                voice: null,
-                archived: prepared.hasExistingEnclosure,
-                status: 'pending',
-                generationMode,
-                contentSource,
-                publishedAt: prepared.publishedAt,
-                updatedAt: sql`CURRENT_TIMESTAMP`
+        if (!existing || articleHasChanged(existing, item)) {
+            let prepared = await prepareParsedFeedArticleForStorage(item, {
+                forceRegenerateImageDescriptions: false
             })
-            .onConflictDoUpdate({
-                target: [articlesTable.feedId, articlesTable.sourceUrl],
-                set: {
+            let episodeKey = buildEpisodeRouteKey(prepared.title, prepared.sourceUrl)
+            let durationSeconds = existing?.transcript != null
+                ? existing.durationSeconds ?? estimateEpisodeDurationSeconds(existing.transcript)
+                : estimateStoredEpisodeDurationSeconds({
+                    title: prepared.title,
+                    summary: prepared.summary,
+                    content: prepared.content,
+                    transcript: null
+                })
+
+            database
+                .insert(articlesTable)
+                .values({
+                    feedId,
                     episodeKey,
                     articleSource,
                     guid: prepared.guid,
+                    sourceUrl: prepared.sourceUrl,
                     title: prepared.title,
                     summary: prepared.summary,
                     content: prepared.content,
                     durationSeconds,
                     publishedAt: prepared.publishedAt,
+                    voice: null,
+                    archived: prepared.hasExistingEnclosure,
+                    status: 'pending',
+                    generationMode,
+                    contentSource,
                     updatedAt: sql`CURRENT_TIMESTAMP`
-                }
-            })
-            .run()
+                })
+                .onConflictDoUpdate({
+                    target: [articlesTable.feedId, articlesTable.sourceUrl],
+                    set: {
+                        episodeKey,
+                        articleSource,
+                        guid: prepared.guid,
+                        title: prepared.title,
+                        summary: prepared.summary,
+                        content: prepared.content,
+                        durationSeconds,
+                        publishedAt: prepared.publishedAt,
+                        updatedAt: sql`CURRENT_TIMESTAMP`
+                    }
+                })
+                .run()
 
-        let stored = findArticleBySourceUrl(feedId, prepared.sourceUrl)
-        if (stored && !existing)
-            storedArticles.push(stored)
+            let stored = findArticleBySourceUrl(feedId, prepared.sourceUrl)
+            if (stored && !existing)
+                storedArticles.push(stored)
+        }
     }
 
     return storedArticles
+}
+
+function articleHasChanged(existing: Article, article: ParsedFeedArticle) {
+    let title = normalizeStoredFeedText(article.title) || article.title
+    let summary = normalizeStoredFeedText(article.summary || '') || null
+
+    return existing.guid != article.guid
+        || existing.title != title
+        || existing.summary != summary
+        || existing.publishedAt != article.publishedAt
 }
 
 async function syncFeed(feed: Feed, limit: number) {
