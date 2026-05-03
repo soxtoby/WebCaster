@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Changed
+- Reworked Windows auto-updates to use a copied helper process with SHA-256 verification and rollback.
+
 ### Fixed
 - Clean hidden email pre-header characters from episode transcripts before TTS generation.
 

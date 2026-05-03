@@ -18,6 +18,12 @@ jobs:
 
       - run: bun compile
 
+      - name: Create executable hash
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash out/WebCaster.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -Path out/WebCaster.exe.sha256 -Value "$hash  WebCaster.exe"
+
       - name: Get version
         id: version
         shell: pwsh
@@ -55,5 +61,6 @@ jobs:
         run: >
           gh release create ${{ steps.version.outputs.tag }}
           out/WebCaster.exe
+          out/WebCaster.exe.sha256
           --title "${{ steps.version.outputs.tag }}"
           --notes-file release-notes.txt

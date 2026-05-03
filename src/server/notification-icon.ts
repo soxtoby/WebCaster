@@ -71,3 +71,13 @@ export function setUpdateAvailable(version: string, restart: () => void) {
         }
     })
 }
+
+export function showUpdateStatusNotification(title: string, text: string) {
+    notifyIcon?.update({
+        notification: {
+            title,
+            text,
+            sound: true
+        }
+    })
+}

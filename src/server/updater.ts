@@ -1,207 +1,207 @@
-import { writeFileSync } from "node:fs"
-import { mkdir, writeFile } from "node:fs/promises"
-import { join } from "node:path"
+import { createHash } from "crypto"
+import { appendFile, copyFile, mkdir, readFile, rm, writeFile } from "fs/promises"
+import { dirname } from "path"
 import { spawn } from "child_process"
-import { CURRENT_VERSION } from "./version"
-import { setUpdateAvailable } from "./notification-icon"
-import { updateDir, updateExePath } from "./paths"
+import { parseArgs } from "util"
 
-let GITHUB_REPO = 'soxtoby/WebCaster'
+let RETRY_MS = 20_000
+let RETRY_DELAY_MS = 500
+let RELAUNCH_SURVIVAL_MS = 3_000
 
-let CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
-let pendingUpdateVersion: string | null = null
+export async function updateApp() {
+    let options = readOptions()
 
-export type UpdateCheckResult = {
-    status: 'unsupported' | 'up-to-date' | 'update-ready' | 'failed'
-    currentVersion: string
-    latestVersion?: string
-}
-
-export function startUpdateChecker() {
-    if (!canCheckForUpdates())
-        return
-
-    setTimeout(async () => {
-        await checkForUpdate()
-        setInterval(() => {
-            void checkForUpdate()
-        }, CHECK_INTERVAL_MS)
-    }, 60_000)
-}
-
-export async function checkForUpdateNow(): Promise<UpdateCheckResult> {
-    return await checkForUpdate()
-}
-
-function canCheckForUpdates() {
-    return process.execPath.toLowerCase().endsWith('webcaster.exe')
-}
-
-async function checkForUpdate(): Promise<UpdateCheckResult> {
-    if (!canCheckForUpdates()) {
-        return {
-            status: 'unsupported',
-            currentVersion: CURRENT_VERSION
-        }
-    }
-
-    if (pendingUpdateVersion && isNewerVersion(pendingUpdateVersion, CURRENT_VERSION)) {
-        return {
-            status: 'update-ready',
-            currentVersion: CURRENT_VERSION,
-            latestVersion: pendingUpdateVersion
-        }
-    }
+    await mkdir(dirname(options.log), { recursive: true })
+    await log(options, 'Update helper started')
 
     try {
-        let res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
-            headers: { 'User-Agent': 'WebCaster' }
-        })
-        if (!res.ok) {
-            return {
-                status: 'failed',
-                currentVersion: CURRENT_VERSION
-            }
-        }
+        await waitForExit(options, options.pid)
+        await backupCurrentExe(options)
+        await replaceCurrentExe(options)
+        await verifyInstalledExe(options)
+        await writeStatus(options, true, `Version ${options.version} installed.`)
+        let relaunched = await relaunchAndVerify(options)
 
-        let release = await res.json() as { tag_name: string; assets: { name: string; browser_download_url: string }[] }
-        let latestVersion = release.tag_name.replace(/^v/, '')
-
-        if (!isNewerVersion(latestVersion, CURRENT_VERSION)) {
-            return {
-                status: 'up-to-date',
-                currentVersion: CURRENT_VERSION,
-                latestVersion
-            }
+        if (relaunched) {
+            await cleanupSuccessfulUpdate(options)
+            await log(options, 'Update completed')
+        } else {
+            await rollback(options, 'Relaunched app did not stay running')
         }
-
-        let asset = release.assets.find(a => a.name === 'WebCaster.exe')
-        if (!asset) {
-            return {
-                status: 'failed',
-                currentVersion: CURRENT_VERSION,
-                latestVersion
-            }
-        }
-
-        let downloaded = await downloadUpdate(asset.browser_download_url)
-        if (downloaded) {
-            pendingUpdateVersion = latestVersion
-            setUpdateAvailable(latestVersion, applyUpdate)
-            return {
-                status: 'update-ready',
-                currentVersion: CURRENT_VERSION,
-                latestVersion
-            }
-        }
-
-        return {
-            status: 'failed',
-            currentVersion: CURRENT_VERSION,
-            latestVersion
-        }
-    } catch {
-        return {
-            status: 'failed',
-            currentVersion: CURRENT_VERSION
-        }
+    } catch (error) {
+        await rollback(options, error instanceof Error ? error.message : String(error))
     }
 }
 
-async function downloadUpdate(url: string): Promise<boolean> {
-    try {
-        let res = await fetch(url)
-        if (!res.ok) return false
+type UpdateOptions = {
+    pid: number
+    current: string
+    new: string
+    backup: string
+    expectedSha256: string
+    log: string
+    status: string
+    version: string
+}
 
-        await mkdir(updateDir, { recursive: true })
-        let buffer = await res.arrayBuffer()
-        await writeFile(updateExePath, Buffer.from(buffer))
-        return true
-    } catch {
-        return false
+function readOptions(): UpdateOptions {
+    let { values } = parseArgs({
+        options: {
+            'update': { type: 'boolean' },
+            pid: { type: 'string' },
+            current: { type: 'string' },
+            new: { type: 'string' },
+            backup: { type: 'string' },
+            'expected-sha256': { type: 'string' },
+            log: { type: 'string' },
+            status: { type: 'string' },
+            version: { type: 'string' }
+        }
+    })
+
+    let pid = parseInt(required(values.pid, 'pid'), 10)
+    if (!Number.isInteger(pid))
+        throw new Error('Invalid pid')
+
+    return {
+        pid,
+        current: required(values.current, 'current'),
+        new: required(values.new, 'new'),
+        backup: required(values.backup, 'backup'),
+        expectedSha256: required(values['expected-sha256'], 'expected-sha256').toLowerCase(),
+        log: required(values.log, 'log'),
+        status: required(values.status, 'status'),
+        version: required(values.version, 'version')
     }
 }
 
-function applyUpdate() {
-    let newExePath = updateExePath
-    let currentExePath = process.execPath
-    let tempDir = process.env.TEMP || process.env.TMP || updateDir
-    let scriptPath = join(tempDir, 'webcaster-update.ps1')
-    let logPath = join(updateDir, 'update.log')
-    let powershellPath = join(process.env.SystemRoot || 'C:/Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
-    let commandShell = process.env.ComSpec || join(process.env.SystemRoot || 'C:/Windows', 'System32', 'cmd.exe')
+function required(value: string | boolean | undefined, key: string) {
+    if (!value)
+        throw new Error(`Missing --${key}`)
 
-    let script = `
-        $ErrorActionPreference = 'Stop'
-        $pidToWait = ${process.pid}
-        $newExe = '${escapeForPowerShellLiteral(newExePath)}'
-        $currentExe = '${escapeForPowerShellLiteral(currentExePath)}'
-        $logPath = '${escapeForPowerShellLiteral(logPath)}'
+    if (typeof value != 'string')
+        throw new Error(`Invalid --${key}`)
 
-        function Write-Log([string] $message) {
-            Add-Content -Path $logPath -Value "$(Get-Date -Format o) $message"
-        }
+    return value
+}
 
-        Write-Log 'Update helper started'
+async function waitForExit(options: UpdateOptions, pid: number) {
+    await log(options, `Waiting for pid ${pid}`)
 
-        while (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue) {
-            Start-Sleep -Milliseconds 500
-        }
+    while (isProcessRunning(pid))
+        await sleep(RETRY_DELAY_MS)
 
-        Start-Sleep -Seconds 1
+    await sleep(1_000)
+}
 
-        $copied = $false
-        for ($attempt = 1; $attempt -le 20 -and -not $copied; $attempt++) {
-            try {
-                Copy-Item -Path $newExe -Destination $currentExe -Force
-                $copied = $true
-                Write-Log "Copied update on attempt $attempt"
-            } catch {
-                Write-Log "Copy failed on attempt $($attempt): $($_.Exception.Message)"
-                Start-Sleep -Seconds 1
-            }
-        }
+async function backupCurrentExe(options: UpdateOptions) {
+    await copyFile(options.current, options.backup)
+    await log(options, 'Backed up current executable')
+}
 
-        if (-not $copied) {
-            Write-Log 'Failed to replace executable'
-            exit 1
-        }
+async function replaceCurrentExe(options: UpdateOptions) {
+    let started = Date.now()
+    let lastError = ''
 
+    while (Date.now() - started < RETRY_MS) {
         try {
-            Start-Process -FilePath $currentExe -WorkingDirectory (Split-Path -Parent $currentExe)
-            Write-Log 'Restarted app'
-        } catch {
-            Write-Log "Restart failed: $($_.Exception.Message)"
-            exit 1
+            await copyFile(options.new, options.current)
+            await log(options, 'Copied update executable')
+            return
+        } catch (error) {
+            lastError = error instanceof Error ? error.message : String(error)
+            await sleep(RETRY_DELAY_MS)
         }
-    `
+    }
 
-    writeFileSync(scriptPath, script, 'utf8')
+    throw new Error(`Failed to replace executable after 20 seconds: ${lastError}`)
+}
 
-    let startCommand = `start "" /min "${powershellPath}" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "${scriptPath}"`
+async function verifyInstalledExe(options: UpdateOptions) {
+    let actualSha256 = await sha256(options.current)
+    if (actualSha256 != options.expectedSha256)
+        throw new Error('Installed executable hash mismatch')
+
+    await log(options, 'Verified installed executable hash')
+}
+
+async function relaunchAndVerify(options: UpdateOptions) {
+    await log(options, 'Relaunching app')
+    let child = spawn(options.current, [], {
+        cwd: dirname(options.current),
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true
+    })
+
+    if (!child.pid)
+        return false
+
+    child.unref()
+    await sleep(RELAUNCH_SURVIVAL_MS)
+    return isProcessRunning(child.pid)
+}
+
+async function rollback(options: UpdateOptions, reason: string) {
+    await log(options, `Update failed: ${reason}`)
 
     try {
-        let child = spawn(commandShell, ['/d', '/s', '/c', startCommand], {
+        await copyFile(options.backup, options.current)
+        await log(options, 'Restored backup executable')
+    } catch (error) {
+        await log(options, `Rollback copy failed: ${error instanceof Error ? error.message : String(error)}`)
+    }
+
+    await writeStatus(options, false, 'Update failed; old version restored.')
+
+    try {
+        let child = spawn(options.current, [], {
+            cwd: dirname(options.current),
             detached: true,
             stdio: 'ignore',
             windowsHide: true
         })
         child.unref()
-        process.exit(0)
+        await log(options, 'Relaunched old version')
     } catch (error) {
-        console.error('Failed to launch update helper', error)
+        await log(options, `Failed to relaunch old version: ${error instanceof Error ? error.message : String(error)}`)
     }
 }
 
-function isNewerVersion(latest: string, current: string): boolean {
-    let parse = (v: string) => v.split('.').map(n => parseInt(n, 10))
-    let [lMaj = 0, lMin = 0, lPatch = 0] = parse(latest)
-    let [cMaj = 0, cMin = 0, cPatch = 0] = parse(current)
-    if (lMaj !== cMaj) return lMaj > cMaj
-    if (lMin !== cMin) return lMin > cMin
-    return lPatch > cPatch
+async function cleanupSuccessfulUpdate(options: UpdateOptions) {
+    await rm(options.new, { force: true })
+    await rm(`${options.new}.sha256`, { force: true })
+    await rm(options.backup, { force: true })
 }
 
-function escapeForPowerShellLiteral(value: string) {
-    return value.replace(/'/g, "''")
+async function sha256(path: string) {
+    let bytes = await readFile(path)
+    return createHash('sha256').update(bytes).digest('hex')
+}
+
+async function writeStatus(options: UpdateOptions, ok: boolean, message: string) {
+    await writeFile(options.status, JSON.stringify({
+        ok,
+        version: options.version,
+        message,
+        time: new Date().toISOString()
+    }, null, 4))
+}
+
+async function log(options: UpdateOptions, message: string) {
+    await appendFile(options.log, `${new Date().toISOString()} ${message}\n`)
+}
+
+function isProcessRunning(pid: number) {
+    try {
+        process.kill(pid, 0)
+        return true
+    } catch (error) {
+        let err = error as NodeJS.ErrnoException
+        return err.code == 'EPERM'
+    }
+}
+
+function sleep(ms: number) {
+    return new Promise(resolve => setTimeout(resolve, ms))
 }
