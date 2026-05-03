@@ -1,0 +1,4 @@
+interface:
+  display_name: "Make Release"
+  short_description: "Bump version and run GitHub release"
+  default_prompt: "Use $make-release to publish the next minor release."
