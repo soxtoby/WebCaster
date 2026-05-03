@@ -822,6 +822,7 @@ async function createAudioStream(feed: Feed, article: Article, onChunkProgress?:
         forceRegenerateTranscript: false,
         refreshFeedArticle: false
     })
+    text = normalizeStoredFeedText(text)
     if (!text.trim())
         throw new Error('Article text is empty')
 
@@ -1394,6 +1395,8 @@ function getMp3FrameLength(version: 'mpeg1' | 'mpeg2' | 'mpeg2.5', layer: number
 
 function normalizeTranscriptText(value: string) {
     return value
+        .replace(/[\u00ad\u034f\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g, '')
+        .replace(/[\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+/g, ' ')
         .replace(/\r\n?/g, '\n')
         .replace(/[ \t\f\v]+\n/g, '\n')
         .replace(/\n[ \t\f\v]+/g, '\n')

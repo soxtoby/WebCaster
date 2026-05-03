@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Fixed
+- Clean hidden email pre-header characters from episode transcripts before TTS generation.
+
 ## V1.0.14
 
 ### Fixed
