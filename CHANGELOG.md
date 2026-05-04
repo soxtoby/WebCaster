@@ -5,6 +5,7 @@
 ### Changed
 - Reworked Windows auto-updates to use a copied helper process with SHA-256 verification and rollback.
 - Moved manual update checks from the settings dialog to the Windows notification icon menu.
+- Hide the Windows console on Explorer launch while keeping terminal logs visible.
 
 ### Fixed
 - Clean hidden email pre-header characters from episode transcripts before TTS generation.
