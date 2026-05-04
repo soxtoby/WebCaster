@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## V1.1.0
+
 ### Changed
 - Reworked Windows auto-updates to use a copied helper process with SHA-256 verification and rollback.
 - Moved manual update checks from the settings dialog to the Windows notification icon menu.
