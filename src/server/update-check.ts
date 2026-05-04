@@ -59,7 +59,7 @@ export async function showLastUpdateStatus() {
     }
 }
 
-function canCheckForUpdates() {
+export function canCheckForUpdates() {
     return process.execPath.toLowerCase().endsWith('webcaster.exe')
 }
 
@@ -226,4 +226,3 @@ function isNewerVersion(latest: string, current: string): boolean {
     if (lMin != cMin) return lMin > cMin
     return lPatch > cPatch
 }
-

@@ -4,9 +4,11 @@ import embeddedIcon from "./icon.ico" with { type: "file" }
 import { file } from "bun"
 import { iconPath } from "./paths"
 import { getServerBaseUrl } from "./settings/settings-repository"
+import { canCheckForUpdates, checkForUpdateNow } from "./update-check"
 
 let notifyIcon: NotifyIcon | null = null
 let pendingUpdate: { version: string; restart: () => void } | null = null
+let isCheckingForUpdate = false
 
 export async function setupNotificationIcon() {
     if (process.platform == 'win32') {
@@ -23,10 +25,14 @@ export async function setupNotificationIcon() {
                         { separator: true }
                     ]
 
-                    if (pendingUpdate) {
+                    if (canCheckForUpdates())
+                        items.push({ id: 4, text: isCheckingForUpdate ? "Checking for updates..." : "Check for updates", disabled: isCheckingForUpdate })
+
+                    if (pendingUpdate)
                         items.push({ id: 3, text: `Restart to update (v${pendingUpdate.version})` })
+
+                    if (canCheckForUpdates() || pendingUpdate)
                         items.push({ separator: true })
-                    }
 
                     items.push({ id: 2, text: "Quit" })
 
@@ -40,6 +46,9 @@ export async function setupNotificationIcon() {
 
                     if (selectedId == 3 && pendingUpdate)
                         pendingUpdate.restart()
+
+                    if (selectedId == 4)
+                        void checkForUpdateFromMenu()
                 } else {
                     open(getServerBaseUrl())
                 }
@@ -80,4 +89,41 @@ export function showUpdateStatusNotification(title: string, text: string) {
             sound: true
         }
     })
+}
+
+async function checkForUpdateFromMenu() {
+    if (isCheckingForUpdate)
+        return
+
+    try {
+        isCheckingForUpdate = true
+        let readyVersion = pendingUpdate?.version
+        let result = await checkForUpdateNow()
+
+        if (result.status == 'update-ready') {
+            if (readyVersion) {
+                showUpdateStatusNotification(
+                    'WebCaster update ready',
+                    `Version ${readyVersion} is ready to install. Right-click the tray icon to restart.`
+                )
+            }
+        } else if (result.status == 'up-to-date') {
+            showUpdateStatusNotification(
+                'WebCaster is up to date',
+                `Version ${result.currentVersion} is installed.`
+            )
+        } else {
+            showUpdateStatusNotification(
+                'Could not check for updates',
+                'Try again later.'
+            )
+        }
+    } catch {
+        showUpdateStatusNotification(
+            'Could not check for updates',
+            'Try again later.'
+        )
+    } finally {
+        isCheckingForUpdate = false
+    }
 }

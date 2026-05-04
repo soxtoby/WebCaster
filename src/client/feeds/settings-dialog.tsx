@@ -104,7 +104,6 @@ export function SettingsDialog(props: {
     let [error, setError] = useState('')
     let [status, setStatus] = useState('')
     let [isSaving, setIsSaving] = useState(false)
-    let [isCheckingForUpdate, setIsCheckingForUpdate] = useState(false)
     let [isLoggingOut, setIsLoggingOut] = useState(false)
     let [draft, setDraft] = useState<TtsSettingsDraft>(createDefaultSettingsDraft())
     let [serverDraft, setServerDraft] = useState<ServerSettingsDraft>(createDefaultServerDraft())
@@ -188,8 +187,6 @@ export function SettingsDialog(props: {
                         onChange={onServerDraftChange}
                         episodeGenerationValue={episodeGenerationDraft}
                         onEpisodeGenerationChange={onEpisodeGenerationDraftChange}
-                        isCheckingForUpdate={isCheckingForUpdate}
-                        onCheckForUpdate={() => checkForUpdate()}
                     />
                     : activeTab == 'imageDescription'
                         ? <ImageDescriptionPanel
@@ -216,7 +213,7 @@ export function SettingsDialog(props: {
                     className={classes(buttonStyle)}
                     type="button"
                     onClick={() => logout()}
-                    disabled={isSaving || isLoggingOut || isCheckingForUpdate}
+                    disabled={isSaving || isLoggingOut}
                 >
                     {isLoggingOut ? "Logging out..." : "Log out"}
                 </button>
@@ -232,7 +229,7 @@ export function SettingsDialog(props: {
                     className={classes([buttonStyle, primaryButtonStyle])}
                     type="button"
                     onClick={() => saveSettings()}
-                    disabled={isSaving || isCheckingForUpdate}
+                    disabled={isSaving}
                 >
                     {isSaving ? "Saving..." : "Save settings"}
                 </button>
@@ -332,29 +329,6 @@ export function SettingsDialog(props: {
             setError('Could not log out')
         } finally {
             setIsLoggingOut(false)
-        }
-    }
-
-    async function checkForUpdate() {
-        setError('')
-        setStatus('')
-
-        try {
-            setIsCheckingForUpdate(true)
-            let result = await api.settings.checkForUpdate.mutate()
-
-            if (result.status == 'update-ready')
-                setStatus(`Version ${result.latestVersion} downloaded. Right-click the tray icon to restart.`)
-            else if (result.status == 'up-to-date')
-                setStatus(`You already have the latest version (${result.currentVersion}).`)
-            else if (result.status == 'unsupported')
-                setStatus('Update checks are only available in the packaged WebCaster app.')
-            else
-                setError('Could not check for updates')
-        } catch {
-            setError('Could not check for updates')
-        } finally {
-            setIsCheckingForUpdate(false)
         }
     }
 
@@ -733,8 +707,6 @@ function ServerPanel(props: {
     onChange: (field: keyof ServerSettingsDraft, value: string | boolean) => void
     episodeGenerationValue: EpisodeGenerationSettingsDraft
     onEpisodeGenerationChange: (field: keyof EpisodeGenerationSettingsDraft, value: string) => void
-    isCheckingForUpdate: boolean
-    onCheckForUpdate: () => void
 }) {
     return <div className={classes(panelContainerStyle)}>
         <div className={classes(panelHeaderStyle)}>
@@ -812,20 +784,6 @@ function ServerPanel(props: {
                 <span className={classes(hintStyle)}>How many episodes can be generated at the same time.</span>
             </label>
 
-            <div className={classes(fieldGroupStyle)}>
-                <span className={classes(labelStyle)}>Application update</span>
-                <div className={classes(fieldActionRowStyle)}>
-                    <button
-                        className={classes(buttonStyle)}
-                        type="button"
-                        onClick={props.onCheckForUpdate}
-                        disabled={props.isCheckingForUpdate}
-                    >
-                        {props.isCheckingForUpdate ? "Checking..." : "Check for updates"}
-                    </button>
-                    <span className={classes(hintStyle)}>Checks GitHub for a newer packaged release and downloads it if available.</span>
-                </div>
-            </div>
         </div>
     </div>
 }
@@ -1100,13 +1058,6 @@ let fieldGroupStyle = style('fieldGroup', {
     display: 'flex',
     flexDirection: 'column',
     gap: 6
-})
-
-let fieldActionRowStyle = style('fieldActionRow', {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    flexWrap: 'wrap'
 })
 
 let labelStyle = style('label', {

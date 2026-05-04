@@ -2,7 +2,6 @@ import { updatePassword } from "../auth/auth"
 import { resumeQueuedEpisodeGeneration } from "../feeds/feed-podcast"
 import { restartServer } from "../serve"
 import { procedure } from "../trpc/trpc"
-import { checkForUpdateNow } from "../update-check"
 import { getEpisodeGenerationSettings, getServerBaseUrl, getServerSettings, listImageDescriptionSettings, listProviderSettings, saveEpisodeGenerationSettings, saveImageDescriptionSettings, saveProviderSettings, saveServerSettings } from "./settings-repository"
 import { SettingsInput } from "./settings-types"
 
@@ -56,7 +55,3 @@ export const save = procedure
         }
     })
 
-export const checkForUpdate = procedure
-    .mutation(async () => {
-        return await checkForUpdateNow()
-    })
