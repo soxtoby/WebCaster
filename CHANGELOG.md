@@ -8,6 +8,7 @@
 ### Fixed
 - Avoid short leading TTS chunks that could make Voicebox garble the first audio segment.
 - Request handler errors are logged and return 500 without crashing the app.
+- Episode titles no longer force horizontal scrolling in the intermediate episodes table layout before compact mode.
 
 ## V1.1.0
 

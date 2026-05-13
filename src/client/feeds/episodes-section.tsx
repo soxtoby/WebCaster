@@ -1083,8 +1083,8 @@ let episodesTableStyle = style('episodesTable', {
     width: '100%',
     borderCollapse: 'collapse',
     textAlign: 'left',
-    tableLayout: 'auto',
-    minWidth: 620,
+    tableLayout: 'fixed',
+    minWidth: '100%',
     $: {
         '@media (max-width: 920px)': {
             minWidth: '100%',
@@ -1113,7 +1113,7 @@ let thStyle = style('episodesTh', {
 })
 
 let thTitleStyle = style('episodesThTitle', {
-    width: '45%',
+    width: 'auto',
     $: {
         '@media (max-width: 920px)': {
             width: 'auto'
@@ -1122,7 +1122,7 @@ let thTitleStyle = style('episodesThTitle', {
 })
 
 let thDateStyle = style('episodesThDate', {
-    width: '15%',
+    width: 116,
     $: {
         '@media (max-width: 920px)': {
             display: 'none'
@@ -1131,7 +1131,7 @@ let thDateStyle = style('episodesThDate', {
 })
 
 let thDurationStyle = style('episodesThDuration', {
-    width: 110,
+    width: 92,
     $: {
         '@media (max-width: 920px)': {
             display: 'none'
@@ -1140,7 +1140,7 @@ let thDurationStyle = style('episodesThDuration', {
 })
 
 let thStatusStyle = style('episodesThStatus', {
-    width: 180,
+    width: 108,
     $: {
         '@media (max-width: 920px)': {
             width: 132
@@ -1149,7 +1149,7 @@ let thStatusStyle = style('episodesThStatus', {
 })
 
 let thActionsStyle = style('episodesThActions', {
-    width: 144,
+    width: 122,
     textAlign: 'right',
     $: {
         '@media (max-width: 920px)': {
@@ -1256,7 +1256,7 @@ let rowActionGroupStyle = style('episodesRowActionGroup', {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    gap: 10,
+    gap: 6,
     flexWrap: 'nowrap'
 })
 
@@ -1400,6 +1400,8 @@ let episodeVoiceTextStyle = style('episodesVoiceText', {
 })
 
 let episodeTitleTextStyle = style('episodesTitleText', {
+    flex: 1,
+    minWidth: 0,
     fontWeight: 500,
     whiteSpace: 'nowrap',
     overflow: 'hidden',
@@ -1419,7 +1421,9 @@ let episodeTitleRowStyle = style('episodesTitleRow', {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
-    minWidth: 0
+    minWidth: 0,
+    flexWrap: 'wrap',
+    rowGap: 6
 })
 
 let episodeRowSummaryStyle = style('episodesRowSummary', {
@@ -1528,8 +1532,8 @@ let completedBadgeStyle = style('episodesCompletedBadge', {
 
 let progressStatusStyle = style('episodesProgressStatus', {
     width: '100%',
-    minWidth: 120,
-    maxWidth: 170,
+    minWidth: 0,
+    maxWidth: '100%',
     display: 'flex',
     flexDirection: 'column',
     gap: 5
