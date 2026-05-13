@@ -80,7 +80,8 @@ function withRequestLogging<TRequest extends Request>(handler: (request: TReques
             return response
         } catch (error) {
             logRequest(request.method, request.url, 500)
-            throw error
+            console.error('Request failed', error)
+            return new Response('Internal Server Error', { status: 500 })
         }
     }
 }

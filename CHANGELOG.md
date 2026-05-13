@@ -4,6 +4,7 @@
 
 ### Fixed
 - Avoid short leading TTS chunks that could make Voicebox garble the first audio segment.
+- Request handler errors are logged and return 500 without crashing the app.
 
 ## V1.1.0
 
