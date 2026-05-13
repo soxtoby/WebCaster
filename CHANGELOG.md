@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## V1.2.0
+
 ### Changed
 - Changed default Gemini model to `gemini-3.1-flash-lite` because `-preview` has been deprecated.
 
