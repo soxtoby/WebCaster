@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Fixed
+- Avoid short leading TTS chunks that could make Voicebox garble the first audio segment.
+
 ## V1.1.0
 
 ### Changed

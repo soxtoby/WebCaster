@@ -53,7 +53,7 @@ export function splitTextIntoChunks(text: string, maxLength: number = 2000): str
 
     let chunks: string[] = []
     let remaining = text
-    let minimumChunkLength = Math.min(50, maxLength)
+    let minimumChunkLength = Math.min(250, Math.floor(maxLength * 0.5))
 
     while (remaining.length > maxLength) {
         let window = remaining.slice(0, maxLength)
