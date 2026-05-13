@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Changed
+- Changed default Gemini model to `gemini-3.1-flash-lite` because `-preview` has been deprecated.
+
 ### Fixed
 - Avoid short leading TTS chunks that could make Voicebox garble the first audio segment.
 - Request handler errors are logged and return 500 without crashing the app.
