@@ -677,6 +677,7 @@ function ensureEpisodeGenerationJob(feed: Feed, article: Article) {
         resolveJob = resolve
         rejectJob = reject
     })
+    jobPromise.catch(() => { })
 
     let job: EpisodeGenerationJob = {
         key: jobKey,
@@ -758,8 +759,14 @@ async function runEpisodeGenerationJob(job: EpisodeGenerationJob) {
         job.resolve()
     } catch (error) {
         let message = error instanceof Error ? error.message : 'Audio generation failed'
-        if (!isCancelledEpisodeGenerationError(error))
+        if (!isCancelledEpisodeGenerationError(error)) {
+            console.error("Episode audio generation failed", {
+                feedId: job.feedId,
+                episodeKey: job.episodeKey,
+                error
+            })
             markArticleFailed(job.feedId, job.episodeKey, message)
+        }
         job.reject(error)
     } finally {
         finishEpisodeGenerationJob(job.key)

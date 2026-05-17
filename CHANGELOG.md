@@ -5,6 +5,9 @@
 ### Changed
 - Reworked TTS chunking to balance minimum, target maximum, and hard maximum chunk sizes.
 
+### Fixed
+- Audio generation failures are logged and leave the affected episode in a failed state with the error message visible in the UI.
+
 ## V1.2.0
 
 ### Changed
