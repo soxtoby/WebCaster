@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## V1.3.0
+
 ### Changed
 - Reworked TTS chunking to balance minimum, target maximum, and hard maximum chunk sizes.
 
