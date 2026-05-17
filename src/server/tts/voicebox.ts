@@ -1,12 +1,16 @@
 import { array, nullable, object, optional, string, type InferOutput } from "valibot"
 import { fetchJson } from "../http/request"
 import { type TtsProviderSettings, type VoiceRecord } from "../settings/settings-types"
-import { createChunkedSpeechStream } from "./chunked-speech"
+import { createChunkedSpeechStream, type ChunkSizeOptions } from "./chunked-speech"
 import { type StreamSpeechOptions } from "./tts"
 import { detectGenderFromName } from "./tts-utils"
 import { convertWavToMp3Bytes } from "./wav-to-mp3"
 
-let voiceboxMaxChunkChars = 500
+let chunkOptions: ChunkSizeOptions = {
+    minLength: 300,
+    targetMaxLength: 500,
+    hardMaxLength: 1000
+}
 
 let VoiceboxProfileSchema = object({
     id: string(),
@@ -38,7 +42,7 @@ export async function streamVoiceboxSpeech(providerVoiceId: string, text: string
     let voice = await resolveVoiceboxVoice(providerVoiceId, settings)
     let stream = createChunkedSpeechStream(
         text,
-        voiceboxMaxChunkChars,
+        chunkOptions,
         async chunk => await fetchVoiceboxChunkStream(voice, chunk, settings),
         options
     )
@@ -186,7 +190,7 @@ function buildVoiceboxGenerationRequest(voice: ResolvedVoiceboxVoice, text: stri
         profile_id: voice.profileId,
         text,
         language: voice.language,
-        max_chunk_chars: voiceboxMaxChunkChars,
+        max_chunk_chars: chunkOptions.hardMaxLength,
         ...(voice.engine ? { engine: voice.engine } : {})
     }
 }

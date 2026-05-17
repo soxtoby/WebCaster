@@ -58,7 +58,7 @@ export async function listInworldVoices(settings: TtsProviderSettings): Promise<
 export async function streamInworldSpeech(providerVoiceId: string, text: string, settings: TtsProviderSettings, options?: StreamSpeechOptions): Promise<{ stream: ReadableStream<Uint8Array>; mimeType: string }> {
     let stream = createChunkedSpeechStream(
         text,
-        inworldMaxChunkChars,
+        { hardMaxLength: inworldMaxChunkChars },
         async chunk => await fetchInworldChunkStream(providerVoiceId, chunk, settings),
         options
     )
