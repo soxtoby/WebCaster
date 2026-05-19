@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## V1.3.1
+
 ### Fixed
 - Chunking properly combines paragraphs to reach minimum chunk size.
 
