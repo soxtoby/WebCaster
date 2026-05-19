@@ -14,9 +14,8 @@ export type ChunkSizeOptions = {
 }
 
 type ResolvedChunkSizeOptions = {
-    minLength: number
-    splitGoal: number
-    hasTargetMaxLength: boolean
+    minLength?: number
+    targetMaxLength: number
     hardMaxLength: number
 }
 
@@ -64,48 +63,52 @@ export function splitTextIntoChunks(text: string, sizes: ChunkSizeOptions): stri
     let options = resolveChunkSizeOptions(sizes)
     let chunks: string[]
 
-    if (text.length <= options.splitGoal) {
-        chunks = [text]
+    if (text.length <= options.targetMaxLength) {
+        chunks = [text.trim()]
     } else {
         chunks = []
         let paragraphs = splitParagraphs(text)
-        let pending = ''
+        let currentChunk = ''
 
         for (let paragraph of paragraphs) {
-            if (pending) {
-                let candidate = pending + '\n\n' + paragraph
-                if (pending.length >= options.minLength && candidate.length > options.splitGoal) {
-                    chunks.push(...splitChunk(pending, options))
-                    pending = paragraph
-                } else {
-                    pending = candidate
-                }
-            } else {
-                pending = paragraph
+            currentChunk = (currentChunk + '\n\n' + paragraph).trim()
+
+            while (currentChunk.length > options.targetMaxLength) {
+                let splitAt = findSplitBoundaries(currentChunk, 0, options.targetMaxLength + 1).at(-1)
+                    ?? findSplitBoundaries(currentChunk, options.targetMaxLength, options.hardMaxLength + 1)[0]
+
+                if (!splitAt)
+                    throw new Error(`TTS chunk contains a word longer than the hard limit of ${options.hardMaxLength} characters.`)
+
+                chunks.push(currentChunk.slice(0, splitAt).trim())
+                currentChunk = currentChunk.slice(splitAt).trimStart()
             }
 
-            while (pending.length > options.hardMaxLength) {
-                let splitAt = findSplit(pending, options)
-                chunks.push(pending.slice(0, splitAt).trim())
-                pending = pending.slice(splitAt).trimStart()
+            if (options.minLength && currentChunk.length >= options.minLength) {
+                chunks.push(currentChunk)
+                currentChunk = ''
             }
         }
 
-        if (pending.trim())
-            chunks.push(...splitChunk(pending, options))
-
-        chunks = mergeShortFinalChunk(chunks, options)
+        if (options.minLength
+            && chunks.length
+            && currentChunk.length < options.minLength
+            && chunks.at(-1)!.length + currentChunk.length + 2 <= options.hardMaxLength
+        ) {
+            chunks[chunks.length - 1] += '\n\n' + currentChunk
+        } else if (currentChunk) {
+            chunks.push(currentChunk)
+        }
     }
 
     return chunks
 }
 
 function resolveChunkSizeOptions(sizes: ChunkSizeOptions): ResolvedChunkSizeOptions {
-    let splitGoal = sizes.targetMaxLength ?? sizes.hardMaxLength
+    let targetMaxLength = sizes.targetMaxLength ?? sizes.hardMaxLength
     return {
-        minLength: sizes.minLength ?? Math.min(250, Math.floor(splitGoal * 0.5)),
-        splitGoal,
-        hasTargetMaxLength: sizes.targetMaxLength != null,
+        minLength: sizes.minLength,
+        targetMaxLength: targetMaxLength,
         hardMaxLength: sizes.hardMaxLength
     }
 }
@@ -118,53 +121,19 @@ function splitParagraphs(text: string) {
         .filter(Boolean)
 }
 
-function splitChunk(text: string, options: ResolvedChunkSizeOptions): string[] {
-    let chunks: string[] = []
-    let remaining = text.trim()
-
-    while (remaining.length > options.splitGoal) {
-        if (!options.hasTargetMaxLength && remaining.length <= options.hardMaxLength)
-            break
-
-        let splitAt = findSplit(remaining, options)
-        chunks.push(remaining.slice(0, splitAt).trim())
-        remaining = remaining.slice(splitAt).trimStart()
-    }
-
-    if (remaining)
-        chunks.push(remaining)
-
-    return chunks
+function findSplitBoundaries(value: string, fromIndex: number, toIndex: number) {
+    let sentenceBoundaries = findSentenceBoundaries(value, fromIndex, toIndex)
+    return sentenceBoundaries.length
+        ? sentenceBoundaries
+        : findWordBoundaries(value, fromIndex, toIndex)
 }
 
-function findSplit(value: string, options: ResolvedChunkSizeOptions) {
-    let sentenceBoundary = findSentenceBoundary(value, options)
-    if (sentenceBoundary > 0)
-        return sentenceBoundary
-
-    return findWordSplit(value, options.hardMaxLength)
-}
-
-function findSentenceBoundary(value: string, options: ResolvedChunkSizeOptions) {
-    let best = -1
-    let matches = value.matchAll(/[.!?]["')\]]?(?=\s)/g)
-
-    for (let match of matches) {
-        let index = match.index
-        if (index == null)
-            continue
-
-        if (isDecimalPoint(value, index) || isAbbreviation(value, index))
-            continue
-
-        let boundary = index + match[0].length
-        let isValidBoundary = boundary >= options.minLength && boundary <= options.hardMaxLength
-        let isBetterBoundary = best < 0 || Math.abs(boundary - options.splitGoal) < Math.abs(best - options.splitGoal)
-        if (isValidBoundary && isBetterBoundary)
-            best = boundary
-    }
-
-    return best
+function findSentenceBoundaries(value: string, fromIndex: number, toIndex: number) {
+    return value.slice(fromIndex, toIndex)
+        .matchAll(/[.!?]["')\]]?(?=\s)/g)
+        .toArray()
+        .filter(match => !isDecimalPoint(value, match.index + fromIndex) && !isAbbreviation(value, match.index + fromIndex))
+        .map(match => match.index + match[0].length + fromIndex)
 }
 
 function isDecimalPoint(value: string, index: number) {
@@ -176,28 +145,9 @@ function isAbbreviation(value: string, index: number) {
     return /\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e|U\.S|U\.K)\.$/i.test(before)
 }
 
-function findWordSplit(value: string, hardMaxLength: number) {
-    let window = value.slice(0, hardMaxLength + 1)
-    let match = Array.from(window.matchAll(/\s+/g)).at(-1)
-    if (!match || match.index == 0)
-        throw new Error(`TTS chunk contains a word longer than the hard limit of ${hardMaxLength} characters`)
-
-    return match.index
-}
-
-function mergeShortFinalChunk(chunks: string[], options: ResolvedChunkSizeOptions) {
-    if (chunks.length < 2)
-        return chunks
-
-    let finalChunk = chunks[chunks.length - 1]
-    if (!finalChunk || finalChunk.length >= options.minLength)
-        return chunks
-
-    let previous = chunks[chunks.length - 2]
-    let merged = previous + '\n\n' + finalChunk
-    let prefix = chunks.slice(0, -2)
-    if (merged.length <= options.hardMaxLength)
-        return [...prefix, merged]
-
-    return [...prefix, ...splitChunk(merged, options)]
+function findWordBoundaries(value: string, fromIndex: number, toIndex: number) {
+    return value.slice(fromIndex, toIndex)
+        .matchAll(/\s+/g)
+        .toArray()
+        .map(match => match.index + fromIndex)
 }
