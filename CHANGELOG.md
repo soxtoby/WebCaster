@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Changed
+- Expand TTS-friendly abbreviations in generated transcripts, including currencies, storage units, month names, ranges, and shorthand phrases.
+
 ## V1.3.1
 
 ### Fixed

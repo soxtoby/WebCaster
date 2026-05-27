@@ -6,6 +6,7 @@ import { episodePath, podcastDirectory } from "../paths"
 import { getCachedVoiceById, getEpisodeGenerationSettings, getServerBaseUrl, listProviderSettings } from "../settings/settings-repository"
 import { type TtsProvider } from "../settings/settings-types"
 import { streamSpeech, type StreamedAudio } from "../tts/tts"
+import { expandTextForTts } from "../tts/tts-text-expansion"
 import { fetchArticlePage, fetchFeed, type ParsedFeedArticle } from "./feed-parsing"
 import { replaceImagesWithDescriptionsWithOptions } from "./image-description"
 import { fetchSourceArticle } from "./source-article"
@@ -1139,12 +1140,16 @@ function clearEpisodeProgress(feedId: number, episodeKey: string) {
 }
 
 async function resolveArticleText(feed: Feed, article: Article, options: { forceRegenerateImageDescriptions: boolean }) {
+    let text = ''
+
     if (feed.contentSource == 'source_page')
-        return await readSourcePage(article.sourceUrl, article, options)
+        text = await readSourcePage(article.sourceUrl, article, options)
+    else {
+        let preparedContent = normalizeStoredFeedText(article.content || article.summary || '')
+        text = [decodeTranscriptText(article.title), preparedContent].join('\n\n').trim()
+    }
 
-    let preparedContent = normalizeStoredFeedText(article.content || article.summary || '')
-
-    return [decodeTranscriptText(article.title), preparedContent].join('\n\n').trim()
+    return expandTextForTts(text)
 }
 
 async function readSourcePage(sourceUrl: string, article: Article, options: { forceRegenerateImageDescriptions: boolean }) {
