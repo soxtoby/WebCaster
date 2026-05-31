@@ -1,15 +1,16 @@
 import { useLiveQuery } from "@tanstack/react-db"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { classes, cssRules, style } from "stylemap"
 import { api } from "../api"
 import icon from "../icon.svg"
-import { feedCollection, type FeedListItem } from "./feed-collections"
+import { feedCollection, queryClient, type FeedListItem } from "./feed-collections"
 import { FeedDetailsSection, type FeedDraft } from "./feed-details-section"
+import { useFeedRouting } from "./feed-routing"
+import { useFeedSelection } from "./feed-selection"
 import { SettingsDialog } from "./settings-dialog"
 import { type VoiceOption } from "./voice-selector-field"
 
 export function FeedManagerPage() {
-    let [selectedFeedId, setSelectedFeedId] = useState<number | null>(null)
     let [isCreating, setIsCreating] = useState(false)
     let [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>([])
     let [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
@@ -17,23 +18,12 @@ export function FeedManagerPage() {
     let [openedFeedSeenEpisodeAt, setOpenedFeedSeenEpisodeAt] = useState<string | null>(null)
 
     let { data: feeds = [], isLoading, isError } = useLiveQuery(q => q.from({ feedCollection }))
-
-    let selectedFeed = useMemo(() => {
-        return feeds.find(feed => feed.id == selectedFeedId) ?? (selectedFeedId && selectedFeedId < 0 ? feeds.at(-1) : null)
-    }, [feeds, selectedFeedId])
-
-    useEffect(() => {
-        if (feeds.length > 0) {
-            let hasSelectedFeed = selectedFeedId != null && feeds.some(feed => feed.id == selectedFeedId)
-            if (!hasSelectedFeed && !isCreating) {
-                let firstFeed = feeds.at(0)
-                if (firstFeed)
-                    setSelectedFeedId(firstFeed.id)
-            }
-        } else {
-            setSelectedFeedId(null)
-        }
-    }, [feeds, selectedFeedId, isCreating])
+    let handleRouteChanged = useCallback(() => {
+        setIsCreating(false)
+        setIsMobileMenuOpen(false)
+    }, [])
+    let { routedFeedSlug, pushFeedRoute, replaceFeedRoute } = useFeedRouting(handleRouteChanged)
+    let selectedFeed = useFeedSelection(feeds, routedFeedSlug, isCreating, replaceFeedRoute)
 
     useEffect(() => {
         void loadVoices()
@@ -179,11 +169,11 @@ export function FeedManagerPage() {
 
                         return <button
                             key={feed.id}
-                            className={classes([feedCardStyle, selectedFeedId == feed.id && feedCardSelectedStyle])}
+                            className={classes([feedCardStyle, selectedFeed?.id == feed.id && feedCardSelectedStyle])}
                             onClick={() => {
-                                setSelectedFeedId(feed.id)
                                 setIsCreating(false)
                                 setIsMobileMenuOpen(false)
+                                pushFeedRoute(feed)
                             }}
                             type="button"
                         >
@@ -210,9 +200,9 @@ export function FeedManagerPage() {
                         <button
                             className={classes([buttonStyle, primaryButtonStyle])}
                             onClick={() => {
-                                setSelectedFeedId(null)
                                 setIsCreating(true)
                                 setIsMobileMenuOpen(false)
+                                pushFeedRoute(null)
                             }}
                             type="button"
                         >
@@ -228,8 +218,8 @@ export function FeedManagerPage() {
                     feed={selectedFeed ?? null}
                     openedFeedSeenEpisodeAt={openedFeedSeenEpisodeAt}
                     onCancel={() => {
-                        setSelectedFeedId(null)
                         setIsCreating(false)
+                        pushFeedRoute(null)
                     }}
                     onDelete={removeFeed}
                     onSave={saveFeed}
@@ -258,20 +248,16 @@ export function FeedManagerPage() {
                 f.updatedAt = new Date().toISOString()
             })
         } else {
-            let newFeed = {
-                id: -1,
-                ...draft,
+            let result = await api.feeds.create.mutate({
+                name: draft.name,
                 rssUrl,
-                description: null,
-                imageUrl: null,
-                latestEpisodeAt: null,
-                podcastSlug: '',
+                voice: draft.voice,
+                generationMode: draft.generationMode,
                 showArchivedEpisodes: draft.showArchivedEpisodes,
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-            }
-            await feedCollection.insert(newFeed).isPersisted.promise
-            setSelectedFeedId(-1)
+                contentSource: draft.contentSource
+            })
+            replaceFeedRoute({ ...result.feed, latestEpisodeAt: null })
+            await queryClient.invalidateQueries({ queryKey: ['feeds'] })
             setIsCreating(false)
         }
     }
@@ -285,8 +271,8 @@ export function FeedManagerPage() {
             return
 
         feedCollection.delete(selectedFeed.id.toString())
-        setSelectedFeedId(null)
         setIsCreating(false)
+        pushFeedRoute(null)
     }
 
     async function loadVoices() {

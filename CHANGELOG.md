@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- Keep the selected feed slug in the URL so refreshing a feed screen returns to the same feed.
+
 ### Changed
 - Expand TTS-friendly abbreviations in generated transcripts, including currencies, storage units, month names, ranges, and shorthand phrases.
 

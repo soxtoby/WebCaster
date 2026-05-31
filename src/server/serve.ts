@@ -30,6 +30,7 @@ export function startServer(hostname: string, port: number) {
         },
         routes: {
             '/': index,
+            '/feeds/:slug': index,
             '/feed/:slug': withRequestLogging(async (request) => {
                 let slug = request.params.slug.replace(/\.xml$/, '')
                 let feed = await getFeedByPodcastSlug(slug)
