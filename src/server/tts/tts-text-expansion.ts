@@ -82,6 +82,9 @@ let moneyScaleWordPattern = Object.values(moneyScaleWords).join('|')
 let storageUnitPattern = Object.keys(storageUnitWords).join('|')
 let monthPattern = Object.keys(monthWords).map(capitalize).join('|')
 let commonFractionPattern = new RegExp(`^${numberPattern}\\s*/\\s*(?:2|3|4|8|10)$`)
+let romanNumeralPattern = /\b[MDCLXVI]+\b/g
+let canonicalRomanNumeralPattern = /^M{0,3}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})$/
+let ambiguousRomanNumerals = new Set(['I', 'V', 'X', 'L', 'C', 'D', 'M', 'CD', 'XL', 'DC'])
 
 let textExpansionRules: TextExpansionRule[] = [
     // Approximate number-like values: ~$1,100 -> around $1,100.
@@ -113,6 +116,11 @@ let textExpansionRules: TextExpansionRule[] = [
     {
         pattern: new RegExp(`\\b(${monthPattern})\\.?(?=\\W|$)`, 'g'),
         expand: (_match, month) => monthWords[month.toLowerCase()] || month
+    },
+    // Roman numerals: XIV -> 14.
+    {
+        pattern: romanNumeralPattern,
+        expand: match => shouldExpandRomanNumeral(match) ? String(romanToNumber(match)) : match
     },
     // Money before nouns: €3B budget -> 3 billion euro budget.
     {
@@ -203,6 +211,37 @@ function expandSlashToken(value: string) {
         return normalizeAmount(value)
 
     return value.replaceAll('-', ' ')
+}
+
+function shouldExpandRomanNumeral(value: string) {
+    return canonicalRomanNumeralPattern.test(value) && !ambiguousRomanNumerals.has(value)
+}
+
+function romanToNumber(value: string) {
+    let total = 0
+    let previous = 0
+    for (let index = value.length - 1; index >= 0; index -= 1) {
+        let digit = value.charAt(index)
+        let current = romanDigitValues[digit] || 0
+        if (current < previous)
+            total -= current
+        else {
+            total += current
+            previous = current
+        }
+    }
+
+    return total
+}
+
+let romanDigitValues: Record<string, number> = {
+    I: 1,
+    V: 5,
+    X: 10,
+    L: 50,
+    C: 100,
+    D: 500,
+    M: 1000
 }
 
 function escapeRegex(value: string) {
