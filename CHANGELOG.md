@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## V1.4.0
+
 ### Added
 - Keep the selected feed slug in the URL so refreshing a feed screen returns to the same feed.
 
