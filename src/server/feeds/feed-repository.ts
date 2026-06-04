@@ -52,7 +52,7 @@ export function getFeedById(id: number) {
 }
 
 export function createFeed(input: FeedInput & { description?: string | null; imageUrl?: string | null }) {
-    let podcastSlug = generateSlug(input.name)
+    let podcastSlug = generateUniqueSlug(input.name)
     let created = database
         .insert(feedsTable)
         .values({
@@ -99,14 +99,31 @@ export function updateFeedById(id: number, input: FeedInput & { description?: st
     return updated
 }
 
-function generateSlug(title: string): string {
+function generateUniqueSlug(title: string): string {
     let base = title
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-|-$/g, "")
-        .slice(0, 40)
-    let random = Math.random().toString(36).slice(2, 8)
-    return `${base}-${random}`
+        .slice(0, 40) || 'feed'
+
+    if (!slugExists(base))
+        return base
+
+    let counter = 2
+    while (slugExists(`${base}-${counter}`))
+        counter++
+
+    return `${base}-${counter}`
+}
+
+function slugExists(slug: string) {
+    let feed = database
+        .select({ id: feedsTable.id })
+        .from(feedsTable)
+        .where(eq(feedsTable.podcastSlug, slug))
+        .get()
+
+    return feed != null
 }
 
 export function deleteFeedById(id: number) {

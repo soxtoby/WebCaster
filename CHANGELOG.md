@@ -7,6 +7,7 @@
 
 ### Changed
 - Expand TTS-friendly abbreviations in generated transcripts, including currencies, storage units, month names, ranges, and shorthand phrases.
+- New feed slugs use the feed name directly and append a counter only when needed.
 
 ## V1.3.1
 
