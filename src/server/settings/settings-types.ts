@@ -33,6 +33,10 @@ export type EpisodeGenerationSettings = {
     concurrentGenerations: number
 }
 
+export type VoiceboxSettings = {
+    location: string
+}
+
 export type SettingsState = Record<TtsProvider, TtsProviderSettings>
 
 let ProviderSettingsInput = object({
@@ -105,6 +109,10 @@ let EpisodeGenerationSettingsInput = object({
     )
 })
 
+let VoiceboxSettingsInput = object({
+    location: pipe(string(), trim())
+})
+
 export type SettingsInput = InferOutput<typeof SettingsInput>
 export const SettingsInput = object({
     settings: object({
@@ -116,6 +124,7 @@ export const SettingsInput = object({
     }),
     imageDescription: ImageDescriptionSettingsInput,
     episodeGeneration: EpisodeGenerationSettingsInput,
+    voicebox: VoiceboxSettingsInput,
     server: object({
         protocol: picklist(['http', 'https']),
         hostname: pipe(string(), trim()),

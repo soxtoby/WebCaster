@@ -48,6 +48,10 @@ export type EpisodeGenerationSettingsDraft = {
     concurrentGenerations: string
 }
 
+export type VoiceboxSettingsDraft = {
+    location: string
+}
+
 type ActiveTab = 'server' | 'imageDescription' | keyof TtsSettingsDraft
 
 type SavedSettingsSnapshot = {
@@ -55,10 +59,12 @@ type SavedSettingsSnapshot = {
     serverDraft: ServerSettingsDraft
     imageDescriptionDraft: ImageDescriptionSettingsDraft
     episodeGenerationDraft: EpisodeGenerationSettingsDraft
+    voiceboxDraft: VoiceboxSettingsDraft
 }
 
 type RouterOutputs = inferRouterOutputs<AppRouter>
 type SettingsResponse = RouterOutputs['settings']['get']
+type VoiceboxRuntimeStatus = SettingsResponse['voicebox'] & { running: boolean; error: string }
 
 let imageDescriptionProviderDefaults = {
     openai: {
@@ -109,6 +115,7 @@ export function SettingsDialog(props: {
     let [serverDraft, setServerDraft] = useState<ServerSettingsDraft>(createDefaultServerDraft())
     let [imageDescriptionDraft, setImageDescriptionDraft] = useState<ImageDescriptionSettingsDraft>(createDefaultImageDescriptionDraft())
     let [episodeGenerationDraft, setEpisodeGenerationDraft] = useState<EpisodeGenerationSettingsDraft>(createDefaultEpisodeGenerationDraft())
+    let [voiceboxDraft, setVoiceboxDraft] = useState<VoiceboxSettingsDraft>(createDefaultVoiceboxDraft())
 
     useEffect(() => {
         void loadSettings()
@@ -199,6 +206,8 @@ export function SettingsDialog(props: {
                             provider={activeTab}
                             value={draft[activeTab]}
                             onChange={onProviderDraftChange}
+                            voiceboxValue={voiceboxDraft}
+                            onVoiceboxChange={onVoiceboxDraftChange}
                         />}
             </div>
         </div>
@@ -280,6 +289,9 @@ export function SettingsDialog(props: {
                 },
                 episodeGeneration: {
                     concurrentGenerations
+                },
+                voicebox: {
+                    location: voiceboxDraft.location.trim()
                 },
                 server: {
                     protocol: parsedAddress.protocol,
@@ -371,6 +383,10 @@ export function SettingsDialog(props: {
         setEpisodeGenerationDraft(current => ({ ...current, [field]: value }))
     }
 
+    function onVoiceboxDraftChange(field: keyof VoiceboxSettingsDraft, value: string) {
+        setVoiceboxDraft(current => ({ ...current, [field]: value }))
+    }
+
     function resetToSavedSettings() {
         applySavedSettingsSnapshot(savedSnapshotRef.current)
         setActiveTab('server')
@@ -384,6 +400,7 @@ export function SettingsDialog(props: {
         setServerDraft(nextSnapshot.serverDraft)
         setImageDescriptionDraft(nextSnapshot.imageDescriptionDraft)
         setEpisodeGenerationDraft(nextSnapshot.episodeGenerationDraft)
+        setVoiceboxDraft(nextSnapshot.voiceboxDraft)
     }
 }
 
@@ -455,12 +472,19 @@ function createDefaultEpisodeGenerationDraft(): EpisodeGenerationSettingsDraft {
     }
 }
 
+function createDefaultVoiceboxDraft(): VoiceboxSettingsDraft {
+    return {
+        location: ''
+    }
+}
+
 function createDefaultSavedSettingsSnapshot(): SavedSettingsSnapshot {
     return {
         draft: createDefaultSettingsDraft(),
         serverDraft: createDefaultServerDraft(),
         imageDescriptionDraft: createDefaultImageDescriptionDraft(),
-        episodeGenerationDraft: createDefaultEpisodeGenerationDraft()
+        episodeGenerationDraft: createDefaultEpisodeGenerationDraft(),
+        voiceboxDraft: createDefaultVoiceboxDraft()
     }
 }
 
@@ -485,6 +509,9 @@ function createSavedSettingsSnapshotFromResponse(response: SettingsResponse): Sa
         },
         episodeGenerationDraft: {
             concurrentGenerations: String(response.episodeGeneration.concurrentGenerations)
+        },
+        voiceboxDraft: {
+            location: response.voicebox.location
         }
     })
 }
@@ -516,6 +543,8 @@ function ProviderPanel(props: {
     provider: keyof TtsSettingsDraft
     value: ProviderSettingsDraft
     onChange: (provider: keyof TtsSettingsDraft, field: keyof ProviderSettingsDraft, value: string | boolean) => void
+    voiceboxValue: VoiceboxSettingsDraft
+    onVoiceboxChange: (field: keyof VoiceboxSettingsDraft, value: string) => void
 }) {
     return <div className={classes(panelContainerStyle)}>
         <div className={classes(panelHeaderStyle)}>
@@ -561,8 +590,121 @@ function ProviderPanel(props: {
                     placeholder="https://api.example.com"
                 />
             </label>
+
+            {props.provider == 'voicebox'
+                ? <VoiceboxRuntimePanel
+                    value={props.voiceboxValue}
+                    baseUrl={props.value.baseUrl}
+                    onChange={props.onVoiceboxChange}
+                />
+                : null}
         </div>
     </div>
+}
+
+function VoiceboxRuntimePanel(props: {
+    value: VoiceboxSettingsDraft
+    baseUrl: string
+    onChange: (field: keyof VoiceboxSettingsDraft, value: string) => void
+}) {
+    let [status, setStatus] = useState<VoiceboxRuntimeStatus>({
+        location: '',
+        running: false,
+        error: ''
+    })
+    let [isChecking, setIsChecking] = useState(false)
+    let [isStarting, setIsStarting] = useState(false)
+
+    useEffect(() => {
+        void checkVoicebox()
+    }, [])
+
+    return <>
+        <label className={classes(fieldGroupStyle)}>
+            <span className={classes(labelStyle)}>Voicebox Location</span>
+            <input
+                className={classes(inputStyle)}
+                type="text"
+                value={props.value.location}
+                onChange={(event: ChangeEvent<HTMLInputElement>) => props.onChange('location', event.target.value)}
+                placeholder={status.location || "Default install location"}
+            />
+            <span className={classes(hintStyle)}>Leave blank to use the default Voicebox install path.</span>
+        </label>
+
+        <div className={classes(voiceboxStatusPanelStyle)}>
+            <div className={classes(voiceboxStatusTextStyle)}>
+                <span className={classes([statusDotStyle, status.running && activeDotStyle])} />
+                <span>{isChecking ? "Checking Voicebox..." : status.running ? "Voicebox is running" : "Voicebox is not running"}</span>
+            </div>
+            {status.error && !status.running
+                ? <span className={classes(hintStyle)}>{status.error}</span>
+                : null}
+            <div className={classes(voiceboxActionsStyle)}>
+                <button
+                    className={classes(buttonStyle)}
+                    type="button"
+                    onClick={checkVoicebox}
+                    disabled={isStarting}
+                >
+                    Check
+                </button>
+                <button
+                    className={classes([buttonStyle, primaryButtonStyle])}
+                    type="button"
+                    onClick={startVoicebox}
+                    disabled={status.running || isChecking || isStarting}
+                >
+                    {isStarting ? "Starting..." : "Start"}
+                </button>
+            </div>
+        </div>
+    </>
+
+    async function checkVoicebox() {
+        if (isChecking)
+            return
+
+        try {
+            setIsChecking(true)
+            let response = await api.settings.voiceboxStatus.query({
+                baseUrl: props.baseUrl,
+                location: props.value.location
+            })
+            setStatus(response)
+            if (!props.value.location)
+                props.onChange('location', response.location)
+        } catch {
+            setStatus(current => ({
+                ...current,
+                running: false,
+                error: 'Could not check Voicebox'
+            }))
+        } finally {
+            setIsChecking(false)
+        }
+    }
+
+    async function startVoicebox() {
+        try {
+            setIsStarting(true)
+            let response = await api.settings.voiceboxStart.mutate({
+                baseUrl: props.baseUrl,
+                location: props.value.location
+            })
+            setStatus(response)
+            if (!props.value.location)
+                props.onChange('location', response.location)
+        } catch {
+            setStatus(current => ({
+                ...current,
+                running: false,
+                error: 'Could not start Voicebox'
+            }))
+        } finally {
+            setIsStarting(false)
+        }
+    }
 }
 
 function validateSettings(settings: TtsSettingsDraft, imageDescription: ImageDescriptionSettingsDraft) {
@@ -1093,6 +1235,30 @@ let inputStyle = style('input', {
             boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent)'
         }
     }
+})
+
+let voiceboxStatusPanelStyle = style('voiceboxStatusPanel', {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    padding: 12,
+    border: '1px solid var(--border)',
+    borderRadius: 6,
+    backgroundColor: 'var(--bg)'
+})
+
+let voiceboxStatusTextStyle = style('voiceboxStatusText', {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 13,
+    fontWeight: 500,
+    color: 'var(--text)'
+})
+
+let voiceboxActionsStyle = style('voiceboxActions', {
+    display: 'flex',
+    gap: 8
 })
 
 let footerStyle = style('settingsFooter', {

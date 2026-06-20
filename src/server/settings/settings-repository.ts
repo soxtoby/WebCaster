@@ -6,7 +6,7 @@ import { inworldDefaults } from "../tts/inworld"
 import { lemonFoxDefaults } from "../tts/lemonfox"
 import { openAiDefaults } from "../tts/openai"
 import { voiceboxDefaults } from "../tts/voicebox"
-import { defaultEpisodeGenerationSettings, defaultImageDescriptionProviderSettings, defaultImageDescriptionSettings, defaultServerSettings, imageDescriptionProviders, ttsProviders, type EpisodeGenerationSettings, type ImageDescriptionProvider, type ImageDescriptionProviderState, type ImageDescriptionSettings, type ServerSettings, type SettingsState, type TtsProvider, type VoiceRecord } from "./settings-types"
+import { defaultEpisodeGenerationSettings, defaultImageDescriptionProviderSettings, defaultImageDescriptionSettings, defaultServerSettings, imageDescriptionProviders, ttsProviders, type EpisodeGenerationSettings, type ImageDescriptionProvider, type ImageDescriptionProviderState, type ImageDescriptionSettings, type ServerSettings, type SettingsState, type TtsProvider, type VoiceRecord, type VoiceboxSettings } from "./settings-types"
 
 export function listProviderSettings(): SettingsState {
     let rows = database.select().from(ttsProviderSettingsTable).all()
@@ -95,6 +95,20 @@ export function getEpisodeGenerationSettings(): EpisodeGenerationSettings {
 export function saveEpisodeGenerationSettings(settings: EpisodeGenerationSettings) {
     upsertAppSettings([
         { key: 'episodeGeneration.concurrentGenerations', value: String(settings.concurrentGenerations) }
+    ])
+}
+
+export function getVoiceboxSettings(): VoiceboxSettings {
+    let map = getAppSettingsMap()
+
+    return {
+        location: map.get('voicebox.location') || ''
+    }
+}
+
+export function saveVoiceboxSettings(settings: VoiceboxSettings) {
+    upsertAppSettings([
+        { key: 'voicebox.location', value: settings.location }
     ])
 }
 

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- Voicebox settings now show whether the local server is running and can start Voicebox from its configured install path.
+
 ## V1.4.0
 
 ### Added

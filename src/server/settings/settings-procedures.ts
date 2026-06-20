@@ -1,15 +1,23 @@
 import { updatePassword } from "../auth/auth"
+import { object, pipe, string, trim } from "valibot"
 import { resumeQueuedEpisodeGeneration } from "../feeds/feed-podcast"
 import { restartServer } from "../serve"
+import { getVoiceboxStatus, startVoicebox } from "../tts/voicebox-runtime"
 import { procedure } from "../trpc/trpc"
-import { getEpisodeGenerationSettings, getServerBaseUrl, getServerSettings, listImageDescriptionSettings, listProviderSettings, saveEpisodeGenerationSettings, saveImageDescriptionSettings, saveProviderSettings, saveServerSettings } from "./settings-repository"
+import { getEpisodeGenerationSettings, getServerBaseUrl, getServerSettings, getVoiceboxSettings, listImageDescriptionSettings, listProviderSettings, saveEpisodeGenerationSettings, saveImageDescriptionSettings, saveProviderSettings, saveServerSettings, saveVoiceboxSettings } from "./settings-repository"
 import { SettingsInput } from "./settings-types"
+
+let VoiceboxRuntimeInput = object({
+    baseUrl: pipe(string(), trim()),
+    location: pipe(string(), trim())
+})
 
 export const get = procedure
     .query(() => ({
         settings: listProviderSettings(),
         imageDescription: listImageDescriptionSettings(),
         episodeGeneration: getEpisodeGenerationSettings(),
+        voicebox: getVoiceboxSettings(),
         server: getServerSettings()
     }))
 
@@ -19,6 +27,7 @@ export const save = procedure
         saveProviderSettings(input.settings)
         saveImageDescriptionSettings(input.imageDescription)
         saveEpisodeGenerationSettings(input.episodeGeneration)
+        saveVoiceboxSettings(input.voicebox)
         resumeQueuedEpisodeGeneration()
 
         if (input.server.password)
@@ -50,8 +59,21 @@ export const save = procedure
             settings: listProviderSettings(),
             imageDescription: listImageDescriptionSettings(),
             episodeGeneration: getEpisodeGenerationSettings(),
+            voicebox: getVoiceboxSettings(),
             server: getServerSettings(),
             redirectUrl
         }
+    })
+
+export const voiceboxStatus = procedure
+    .input(VoiceboxRuntimeInput)
+    .query(async ({ input }) => {
+        return await getVoiceboxStatus(input.baseUrl, input.location)
+    })
+
+export const voiceboxStart = procedure
+    .input(VoiceboxRuntimeInput)
+    .mutation(async ({ input }) => {
+        return await startVoicebox(input.baseUrl, input.location)
     })
 
